@@ -2,426 +2,412 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Arayüzsüz, test edilmiş bir çekirdek kurmak. Görevleri SQLite'a yazar, bağımlılık sırasına göre motorlara (claude, codex, agy) dağıtır, kullanımı ve olayları kaydeder, sonucu önce makine kontrolünden geçirir.
+**Goal:** Arayüzsüz, test edilmiş bir çekirdek. Çekirdeğin işleri:
+- Görevleri SQLite'a yazar.
+- Görevleri bağımlılık sırasına göre motorlara dağıtır: claude, codex, antigravity (agy).
+- Kullanımı ve olayları kaydeder.
+- Limite takılan işi bekletir; çöken çalışmadan sonra durumu kurtarır.
+- Sonucu önce makine kontrolünden geçirir.
 
-**Architecture:** Tek süreç, Node 24 ESM. Kalıcı durum `node:sqlite` üzerinde WAL kipinde tutulur. Her değişiklik append-only `events` tablosuna da yazılır. Zamanlayıcı hazır görevleri (bağımlılıkları bitmiş, sahipsiz) atomik checkout ile alır. Görevleri motor başına sınırlı paralellikle adaptörlere verir. Adaptörler CLI süreci başlatır ve satır satır ayrıştırır. Ayrıştırıcılar Ofis'in `parseCliLine` mantığından taşınır.
+**Architecture:**
+- Tek süreç, Node 24 ESM.
+- Kalıcı durum `node:sqlite` üzerinde, WAL kipinde. `busy_timeout` var, yazmalar `BEGIN IMMEDIATE` ile yapılır.
+- Her değişiklik append-only `events` tablosuna yazılır.
+- Zamanlayıcı hazır görevi tek işlemde iki adımla alır: önce atomik checkout, sonra run kaydı. Görevleri motor başına sınırlı paralellikle adaptörlere verir.
+- Adaptörler Ofis'in `src/agents/cli.js` dosyasındaki davranışı **birebir** taşır:
+  - bayraklar
+  - stdin ya da dosyayla verilen prompt
+  - UTF-8 çözme
+  - süreç ağacını öldürme
+  - ikili dosya arama
 
-**Tech Stack:** Node.js ≥ 24 (`node:sqlite`, `node:test`, `node:child_process`). JavaScript + JSDoc. Dış bağımlılık yok.
+**Tech Stack:** Node.js ≥ 24 (`node:sqlite` `DatabaseSync`, `node:test`, `node:child_process`, `node:string_decoder`). JavaScript + JSDoc. Dış bağımlılık yok.
 
-**Spec:** `docs/PLAN.md` (Aşama 1, §3.4 hız hedefleri) ve `docs/OZELLIK-HARITASI.md` (A1 satırları: 1, 2, 3, 4 veri, 5, 17 liste).
+**Spec:**
+- `docs/PLAN.md` (Aşama 1 ve §3.4)
+- `docs/OZELLIK-HARITASI.md` (A1 satırları)
+- Ofis referans kodu (yalnız okunur):
+  - `feyzullah-ofis/src/agents/cli.js`
+  - `runner.js:27-71,151-197`
+  - `admin.js:185`
 
 ## Global Constraints
 
-- Node `>=24`, `"type": "module"`, yalnız yerleşik modüller. `npm install` gerektiren paket yok.
-- Testler: `node --test "test/**/*.test.js"`. Her test kendi geçici veritabanını açar: `:memory:` ya da `os.tmpdir()` altında bir dosya.
-- Sırlar, `~/.feyzullah/*` içeriği ve API anahtarları repoya, olaylara ya da loglara yazılmaz.
-- CLI çağrılarında `--dangerously-skip-permissions` ya da `--yolo` yok. Ofis'teki gibi izin listesiyle çalışılır.
-- Çalışan Ofis'e (`feyzullah-ofis`) dokunulmaz. Kod oradan okunup yeniden yazılır.
-- Paperclip'ten kod kopyalanırsa `THIRD_PARTY.md` dosyasına MIT bildirimi eklenir (commit `cff331f`).
-- Olay ve görev durumları sabit küme: `todo | in_progress | done | failed | blocked | cancelled`.
-- Bütçe: `warnPercent` varsayılan 80, `hardStop` varsayılan true. Birim token.
-- Commit kimliği `144558175+Bluetwinklez@users.noreply.github.com`. Commit mesajı sonu: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Ortam ve test:**
+  - Node `>=24`, `"type": "module"`, yalnız yerleşik modüller.
+  - Testler: `node --test "test/**/*.test.js"`.
+  - Fixture yolları `import.meta.dirname` ile kurulur.
+  - Her test kendi veritabanını açar ve kapatır.
+- **Motor kimlikleri:** `claude | codex | antigravity`. `agy` yalnız takma addır ve `normalizeEngine()` onu `antigravity` yapar. Ofis'in `ofis-agents.json` dosyası da bu kimlikleri kullanır.
+- **Zaman:** Bütün zaman alanları epoch ms (`INTEGER`). Pencere hesabı yerel saatle yapılır ve ms'e çevrilir.
+- **Görev durumları:** `backlog | todo | in_progress | in_review | blocked | done | failed | cancelled`.
+- **Run durumları:** `queued | running | succeeded | failed | timed_out | interrupted | cancelled | limited`.
+- **Kullanım biçimi:** `{input, cachedInput, cacheWrite, output, known:boolean}`.
+  - `input` önbelleksiz girdidir.
+  - Codex: `input = input_tokens - cached_input_tokens`.
+  - Claude: `input_tokens`, `cache_read_input_tokens` ve `cache_creation_input_tokens` ayrı ayrı tutulur.
+  - antigravity kullanım vermez: `known:false`, sayılar 0.
+- **Bütçe:** Birim token. `used = input + cacheWrite + output`. `warnPercent` 80, `hardStop` true.
+- **İzin ve güvenlik:**
+  - Hiçbir motor argümanında `--dangerously-skip-permissions`, `--yolo` ya da `bypass` yok.
+  - Sırlar, `~/.feyzullah/*` içeriği ve API anahtarları repoya, olaylara ya da loglara yazılmaz.
+  - Çalışan Ofis'e dokunulmaz. Kod okunur ve yeniden yazılır.
+- **Windows'ta süreç:** `.cmd` ve `.bat` doğrudan spawn edilmez; Node'da EINVAL verir (CVE-2024-27980). İptal ve zaman aşımında `taskkill /pid <pid> /T /F` kullanılır.
+- **Zaman aşımı:** Run başına varsayılan 60 dakika (Ofis `runner.js:151`).
+- **Lisanslı kod:** Paperclip'ten kod kopyalanırsa `THIRD_PARTY.md` dosyasına MIT bildirimi eklenir (commit `cff331f`). Paperclip'in claude adaptörü `dangerouslySkipPermissions` varsayılanını açık tutar; o kısım alınmaz.
+- **Commit:** Kimlik `144558175+Bluetwinklez@users.noreply.github.com`. Mesaj sonu: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
-- **Bağımlılık döngüsü:** A→B→A eklenmeye çalışılırsa hata atılmalı, tablo değişmemeli (Task 3 testi).
-- **Aynı görevi iki çalışma birden alamaz:** İkinci `checkoutTask` `false` döner (Task 3 testi).
-- **Motor CLI'ı bozuk ya da JSON olmayan satır basar:** Ayrıştırıcı çökmez, satırı `{}` olarak geçer (Task 4 testi).
-- **Motor süreci hata koduyla çıkar ya da zaman aşar:** Görev `failed` olur, run kaydı `exit_code` ile kapanır, zamanlayıcı kalan görevlere devam eder (Task 7 testi).
-- **Bütçe tam sınırda:** Kullanım tam %100'de `stop`, %80'de `warn` döner (Task 5 testi).
+- **Kullanım limiti:** Görev `failed` olmaz. `blocked` olur ve `retry_at` alır. Bağımlıları kilitlenmez; `retry_at` geçince görev yeniden hazır olur (Task 7).
+- **Süreç çökmesi ya da elle kapatma:** Açılışta `recoverStale` takılı run'ları `interrupted` yapar ve görevleri `todo`'ya döndürür (Task 3).
+- **Çıkış kodu 0 ama iş hatalı:** agy `status != SUCCESS` ya da boş cevap, claude `is_error`, codex `turn.failed` durumlarında görev `failed` olur (Task 4, Task 7).
+- **Uzun prompt:** 24.000 karakterden uzun prompt komut satırına konmaz. claude ve codex stdin'den alır, agy dosyadan alır (Task 6).
+- **İki süreç aynı anda checkout yapar:** Yalnız biri kazanır, kaybeden yetim run bırakmaz (Task 3).
 
 ---
 
 ## Dosya yapısı
 
 ```
-src/core/db.js          openDb + şema göçleri
-src/core/events.js      append-only olay günlüğü
-src/core/tasks.js       görev CRUD, bağımlılık, hazır görevler, checkout, run kaydı
-src/core/costs.js       kullanım kaydı, bütçe durumu
-src/core/policy.js      motor başına araç listesi, onay isteyen eylemler
-src/core/checks.js      makine kontrolleri (test/lint/build)
-src/core/scheduler.js   DAG zamanlayıcı, motor başına havuz
-src/engines/parse.js    claude/codex/agy satır ayrıştırıcıları
-src/engines/args.js     CLI argümanları ve ikili bulma
-src/engines/adapter.js  createCliAdapter: süreç başlat, akış ayrıştır
-src/cli.js              `fa` giriş noktası (init, add, run, status)
-test/fixtures/engines/  gerçek motor çıktısından kısaltılmış satırlar (sır içermez)
+src/core/db.js          openDb, göçler, tx (BEGIN IMMEDIATE)
+src/core/events.js      append-only olay günlüğü, sır maskeleme
+src/core/tasks.js       görev, bağımlılık, claimTask, finishRun, recoverStale, görev oturumları
+src/core/costs.js       kullanım ve bütçe
+src/core/policy.js      ajan başına araç listesi, onay isteyen eylemler
+src/core/checks.js      makine kontrolleri
+src/core/limits.js      limit algılama (LIMIT_RE + rate olayı) ve retry_at hesabı
+src/core/scheduler.js   DAG zamanlayıcı
+src/engines/parse.js    satır ayrıştırıcıları
+src/engines/args.js     cliArgs, normalizeEngine
+src/engines/bins.js     findBins (Windows konumları)
+src/engines/adapter.js  createCliAdapter
+src/cli.js, bin/fa.js   fa komutu
+test/fixtures/          motor çıktıları (sır yok), fake-engine.mjs
 ```
 
 ---
 
-### Task 1: Veritabanı ve şema
+### Task 1: Veritabanı, şema, işlem yardımcısı
 
-**Files:**
-- Create: `src/core/db.js`
-- Test: `test/core/db.test.js`
+**Files:** Create `src/core/db.js`. Test `test/core/db.test.js`.
 
 **Interfaces:**
-- Produces: `openDb(path: string = ':memory:'): DatabaseSync`. WAL açık (dosya için), `foreign_keys = ON`, göçler uygulanmış. `schemaVersion(db): number`.
+- Produces:
+  - `openDb(path = ':memory:'): DatabaseSync`. Ayarlar:
+    - `journal_mode=WAL` (dosyada)
+    - `busy_timeout=5000`
+    - `foreign_keys=ON`
+    - göçler uygulanmış
+  - `tx(db, fn): T`. `BEGIN IMMEDIATE` açar, `fn()` çalıştırır, `COMMIT` eder; hata olursa `ROLLBACK` yapıp hatayı yeniden atar. `node:sqlite` bunu hazır vermez.
+  - `schemaVersion(db): number`
+  - `now(): number`. `Date.now()` döner; testte değiştirilebilsin diye tek yerden gelir.
 
-Tablolar (göç 1):
-- `workspaces(id TEXT PK, name, root, created_at)`
-- `agents(id TEXT PK, workspace_id, name, engine, model, department, reports_to, capabilities TEXT /*JSON*/, persona)`
-- `tasks(id TEXT PK, workspace_id, title, prompt, status, assignee_agent_id, engine, parent_id, goal_id, checkout_run_id, locked_at, created_at, updated_at, result TEXT /*JSON*/)`
-- `task_deps(task_id, depends_on, PRIMARY KEY(task_id, depends_on))`
-- `runs(id TEXT PK, task_id, engine, status, session_before, session_after, exit_code, usage TEXT, started_at, finished_at, last_output_at, error)`
-- `events(seq INTEGER PK AUTOINCREMENT, at, actor, type, entity, entity_id, data TEXT)`
-- `usage(id INTEGER PK, run_id, agent_id, engine, model, input_tokens, cached_input_tokens, output_tokens, at)`
-- `budgets(id TEXT PK, scope TEXT /*'global'|'agent'|'engine'*/, scope_id, window TEXT /*'month'|'day'*/, limit_tokens INTEGER, warn_percent INTEGER DEFAULT 80, hard_stop INTEGER DEFAULT 1)`
-- `meta(key PK, value)`: `schema_version`
+Göç 1'deki tablolar:
+- `workspaces(id PK, name, root, kind /*'generic'|'roblox'|…*/, created_at)`
+- `agents(id PK, workspace_id REFERENCES workspaces, name, engine, model, department, reports_to REFERENCES agents, capabilities /*JSON*/, persona)`
+- `tasks(id PK, workspace_id REFERENCES workspaces, title, prompt, status, engine, assignee_agent_id REFERENCES agents, parent_id REFERENCES tasks, goal_id, checkout_run_id, locked_at, retry_at, attempts INTEGER DEFAULT 0, created_at, updated_at, result /*JSON*/)`
+- `task_deps(task_id REFERENCES tasks, depends_on REFERENCES tasks, PK(task_id, depends_on), CHECK(task_id <> depends_on))`
+- `runs(id PK, task_id REFERENCES tasks, engine, status, session_before, session_after, exit_code, signal, error, error_code, stdout_excerpt, usage /*JSON*/, started_at, finished_at, last_output_at, pid)`
+- `task_sessions(agent_key, engine, task_key, session_id, updated_at, PK(agent_key, engine, task_key))`
+  - Paperclip'teki `agent_task_sessions` karşılığı.
+  - Oturum görev başına tutulur. "Sıcak süreç" diye bir şey yok.
+- `events(seq INTEGER PK AUTOINCREMENT, at, actor, type, entity, entity_id, data)` + `BEFORE UPDATE` / `BEFORE DELETE` trigger'ları → `RAISE(ABORT,'append-only')`.
+  - Göçler gerekirse aynı işlem içinde trigger'ı önce düşürüp sonra yeniden kurar.
+- `usage(id PK, run_id, agent_id, engine, model, input, cached_input, cache_write, output, known, at)`
+- `budgets(id PK, scope /*'global'|'engine'|'agent'*/, scope_id, window /*'day'|'month'*/, limit_tokens, warn_percent DEFAULT 80, hard_stop DEFAULT 1)`
+- `meta(key PK, value)`
 
-- [ ] **Step 1: Write the failing test**
-
-```js
-test('openDb şemayı kurar ve sürüm 1 döner', () => {
-  const db = openDb(':memory:');
-  assert.equal(schemaVersion(db), 1);
-  const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
-  for (const t of ['workspaces','agents','tasks','task_deps','runs','events','usage','budgets','meta']) assert.ok(names.includes(t), t);
-});
-test('dosya veritabanı WAL kipinde açılır ve ikinci açılış göçü tekrarlamaz', () => {
-  const p = join(mkdtempSync(join(tmpdir(), 'fa-')), 'fa.db');
-  const a = openDb(p); a.close();
-  const b = openDb(p);
-  assert.equal(b.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
-  assert.equal(schemaVersion(b), 1);
-});
-```
-
-- [ ] **Step 2: Run, expect FAIL** — `node --test test/core/db.test.js` → "Cannot find module".
-- [ ] **Step 3: Implement** `openDb`, `schemaVersion` in `src/core/db.js`. Göçler: dizi `MIGRATIONS = [sql1]`. `meta.schema_version` değerinden büyük olanlar tek bir `BEGIN…COMMIT` içinde uygulanır.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `git add src/core/db.js test/core/db.test.js package.json && git commit -m "feat(core): SQLite şema ve göçler"`
+- [ ] **Step 1: Failing tests**
+  - `'şema kurulur ve sürüm 1'`: 11 tablo da var.
+  - `'dosya veritabanı WAL ve busy_timeout 5000, ikinci açılış göç tekrarlamaz'`:
+    - Her iki bağlantı da `close()` edilir.
+    - `:memory:` için journal_mode beklenmez.
+  - `'tx hata atınca geri alır'`: `tx(db, () => { insert; throw })` → satır yok.
+  - `'öz bağımlılık CHECK ile reddedilir'`
+- [ ] **Step 2:** `node --test test/core/db.test.js` → FAIL.
+- [ ] **Step 3: Implement.** `MIGRATIONS` dizisinde `meta.schema_version` değerinden yeni olan göçler `tx` içinde uygulanır.
+- [ ] **Step 4:** PASS.
+- [ ] **Step 5: Commit** — `feat(core): SQLite şema, göçler ve işlem yardımcısı`
 
 ### Task 2: Olay günlüğü
 
-**Files:**
-- Create: `src/core/events.js`
-- Test: `test/core/events.test.js`
+**Files:** Create `src/core/events.js`. Test `test/core/events.test.js`.
 
 **Interfaces:**
-- Consumes: `openDb` (Task 1).
 - Produces:
-  - `append(db, {actor, type, entity, entityId, data}): number` → seq
-  - `since(db, seq: number, limit = 500): Event[]`
-  - `Event = {seq, at, actor, type, entity, entityId, data}`. `data` nesne olarak döner.
+  - `append(db, {actor, type, entity, entityId, data}): number` → seq.
+  - `since(db, seq, limit = 500): Event[]`. `data` ayrıştırılmış nesne olarak döner.
+  - `redact(obj): obj`. Anahtar adı `/key|token|password|secret|authorization|cookie/i` ile eşleşirse değer `"[gizli]"` yapılır. İç içe nesnelere ve dizilere de uygulanır.
 
-`append` içinde `data` alanındaki şu anahtarlar `"[gizli]"` ile değiştirilir: `key`, `token`, `password`, `secret`, `apiKey` (büyük/küçük harf duyarsız, iç içe nesnelerde de).
-
-- [ ] **Step 1: Failing test**
-
-```js
-test('append artan seq döner, since sıralı okur', () => {
-  const db = openDb();
-  const a = append(db, {actor:'system', type:'task.created', entity:'task', entityId:'t1', data:{title:'x'}});
-  const b = append(db, {actor:'agent:k', type:'task.done', entity:'task', entityId:'t1', data:{}});
-  assert.ok(b > a);
-  assert.deepEqual(since(db, a).map(e => e.type), ['task.done']);
-});
-test('gizli anahtarlar maskelenir', () => {
-  const db = openDb();
-  append(db, {actor:'system', type:'x', entity:'e', entityId:'1', data:{nested:{apiKey:'sk-123'}, Token:'t'}});
-  const [e] = since(db, 0);
-  assert.equal(e.data.nested.apiKey, '[gizli]');
-  assert.equal(e.data.Token, '[gizli]');
-});
-test('events tablosunda UPDATE ve DELETE engellenir', () => {
-  const db = openDb(); append(db, {actor:'s', type:'x', entity:'e', entityId:'1', data:{}});
-  assert.throws(() => db.exec('DELETE FROM events'), /append-only/);
-});
-```
-
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement** `append`, `since`. Append-only kuralı Task 1'deki göçe eklenen iki trigger ile sağlanır: `BEFORE UPDATE` ve `BEFORE DELETE ON events` → `RAISE(ABORT,'append-only')`.
-- [ ] **Step 4: Run, expect PASS.**
+- [ ] **Step 1: Failing tests**
+  - `'append artan seq döner, since sıralı okur'`
+  - `'iç içe ve dizideki gizli anahtarlar maskelenir'`: `{a:[{apiKey:'x'}], Authorization:'y'}`
+  - `'DELETE ve UPDATE append-only hatası verir'`
+- [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5: Commit** — `feat(core): append-only olay günlüğü`
 
-### Task 3: Görevler, bağımlılıklar, checkout, run kayıtları
+### Task 3: Görevler, checkout, run kayıtları, kurtarma, görev oturumları
 
-**Files:**
-- Create: `src/core/tasks.js`
-- Test: `test/core/tasks.test.js`
+**Files:** Create `src/core/tasks.js`. Test `test/core/tasks.test.js`.
 
 **Interfaces:**
-- Consumes: `openDb`, `append`.
+- Consumes: `openDb`, `tx`, `now`, `append`.
 - Produces:
-  - `createTask(db, {title, prompt, engine?, assigneeAgentId?, parentId?, goalId?, workspaceId='default'}): Task`. Durum `todo`. `id` = `crypto.randomUUID()`.
-  - `addDependency(db, taskId, dependsOn): void`. Döngü oluşursa `Error('döngü: …')` atar ve tabloyu değiştirmez.
-  - `readyTasks(db, {limit=50}?): Task[]`. Koşullar: durum `todo`, `checkout_run_id IS NULL`, bütün bağımlılıklar `done`. Sıra: `created_at`.
-  - `checkoutTask(db, taskId, runId): boolean`. Tek `UPDATE tasks SET checkout_run_id=?, locked_at=?, status='in_progress' WHERE id=? AND checkout_run_id IS NULL AND status='todo'`, ardından `changes === 1`.
-  - `startRun(db, {taskId, engine, sessionBefore?}): Run`
-  - `finishRun(db, runId, {status, exitCode?, sessionAfter?, usage?, error?, result?}): void`. Görevi `done` ya da `failed` yapar, checkout'u temizler.
-  - `getTask(db, id): Task | undefined`
-- Her durum değişikliği bir olay yazar: `task.created`, `task.checked_out`, `run.started`, `run.finished`, `task.done`, `task.failed`.
-
-Döngü kontrolü: `dependsOn` görevinden başlayıp mevcut bağımlılıklar boyunca özyinelemeli CTE ile yürünür. Yolda `taskId` görülürse döngü vardır.
+  - `createTask(db, {title, prompt, engine?, assigneeAgentId?, parentId?, goalId?, workspaceId='default', status='todo'}): Task`
+  - `addDependency(db, taskId, dependsOn): void`
+    - Döngü varsa `Error('döngü: …')` atar.
+    - Kontrol: `dependsOn` görevinden başlayan özyinelemeli CTE, `taskId`'ye ulaşıyor mu?
+  - `readyTasks(db, {limit=50, at=now()}?): Task[]`. Koşullar:
+    - durum `todo`, ya da durum `blocked` ve `retry_at <= at`
+    - `checkout_run_id IS NULL`
+    - bütün bağımlılıklar `done`
+    - sıra `created_at`
+  - `claimTask(db, taskId, {engine, sessionBefore?}): Run | null`
+    - Tek `tx` içinde önce `UPDATE tasks SET checkout_run_id=?, locked_at=?, status='in_progress', attempts=attempts+1 WHERE id=? AND checkout_run_id IS NULL AND status IN ('todo','blocked')` çalışır.
+    - `changes === 1` ise `runs` satırı `running` olarak eklenir.
+    - Checkout kaybedilirse `null` döner ve run kaydı oluşmaz.
+  - `finishRun(db, runId, {status, exitCode?, signal?, error?, errorCode?, sessionAfter?, usage?, result?, retryAt?, stdoutExcerpt?}): void`. Görev durumu run durumuna göre değişir:
+    - `succeeded` → `done`
+    - `limited` → `blocked`, `retry_at` yazılır
+    - `failed`, `timed_out` → `failed`
+    - `cancelled` → `cancelled`
+    - Her durumda checkout boşaltılır.
+  - `recoverStale(db): number`
+    - `running` kalan run'ları `interrupted` yapar.
+    - Görevlerini `todo`'ya döndürür, checkout'u boşaltır.
+    - Kurtarılan sayıyı döner. Açılışta bir kez çağrılır.
+  - `getSession(db, {agentKey, engine, taskKey}): string|null`, `saveSession(db, {...}, sessionId): void`
+  - `getTask(db, id)`
+- Olaylar: `task.created`, `task.claimed`, `run.finished`, `task.done`, `task.failed`, `task.blocked`, `run.recovered`.
 
 - [ ] **Step 1: Failing tests**
+  - `'bağımlılığı bitmemiş görev hazır değil'`
+  - `'döngü reddedilir ve tablo değişmez'`
+  - `'aynı görevi ikinci claim alamaz ve yetim run kalmaz'`
+    ```js
+    assert.ok(claimTask(db, t.id, {engine:'codex'}));
+    assert.equal(claimTask(db, t.id, {engine:'codex'}), null);
+    assert.equal(db.prepare('SELECT count(*) n FROM runs').get().n, 1);
+    ```
+  - `'finishRun succeeded bağımlıyı hazırlar'`
+  - `'limited görev retry_at gelince yeniden hazır'`:
+    - `retryAt = 1000`
+    - `readyTasks({at:999})` boş döner.
+    - `readyTasks({at:1000})` görevi döner.
+  - `'recoverStale takılı run'ı interrupted, görevi todo yapar'`
+  - `'görev oturumu kaydedilir ve okunur'`
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** — `feat(core): görevler, atomik claim, kurtarma, görev oturumları`
 
-```js
-test('bağımlılığı bitmemiş görev hazır değil', () => {
-  const db = openDb();
-  const a = createTask(db, {title:'a', prompt:'a'}); const b = createTask(db, {title:'b', prompt:'b'});
-  addDependency(db, b.id, a.id);
-  assert.deepEqual(readyTasks(db).map(t => t.id), [a.id]);
-});
-test('döngü reddedilir', () => {
-  const db = openDb();
-  const a = createTask(db, {title:'a', prompt:''}); const b = createTask(db, {title:'b', prompt:''});
-  addDependency(db, b.id, a.id);
-  assert.throws(() => addDependency(db, a.id, b.id), /döngü/);
-  assert.equal(db.prepare('SELECT count(*) n FROM task_deps').get().n, 1);
-});
-test('aynı görevi ikinci run alamaz', () => {
-  const db = openDb(); const t = createTask(db, {title:'t', prompt:''});
-  assert.equal(checkoutTask(db, t.id, 'r1'), true);
-  assert.equal(checkoutTask(db, t.id, 'r2'), false);
-  assert.equal(getTask(db, t.id).checkout_run_id, 'r1');
-});
-test('finishRun done ise bağımlı görevi hazırlar', () => {
-  const db = openDb();
-  const a = createTask(db, {title:'a', prompt:''}); const b = createTask(db, {title:'b', prompt:''});
-  addDependency(db, b.id, a.id);
-  const run = startRun(db, {taskId:a.id, engine:'codex'}); checkoutTask(db, a.id, run.id);
-  finishRun(db, run.id, {status:'done', exitCode:0});
-  assert.deepEqual(readyTasks(db).map(t => t.id), [b.id]);
-});
-```
-
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement** the functions above in `src/core/tasks.js`.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `feat(core): görevler, bağımlılık DAG'i, atomik checkout`
-
-### Task 4: Motor ayrıştırıcıları ve CLI argümanları
+### Task 4: Ayrıştırıcılar, argümanlar, ikili arama
 
 **Files:**
-- Create: `src/engines/parse.js`, `src/engines/args.js`, `test/fixtures/engines/{claude,codex,agy}.jsonl`
-- Test: `test/engines/parse.test.js`, `test/engines/args.test.js`
+- Create `src/engines/parse.js`, `src/engines/args.js`, `src/engines/bins.js`, `test/fixtures/engines/{claude,codex,antigravity}.jsonl`.
+- Test `test/engines/*.test.js`.
 
 **Interfaces:**
 - Produces:
-  - `parseLine(engine: 'claude'|'codex'|'agy', line: string): ParsedLine`. `ParsedLine = {sessionId?, text?, final?, error?, usage?: {input, cachedInput, output}, rate?}`. Ofis `src/agents/cli.js` → `parseCliLine` ile aynı anlam. Alan adları burada sabitlenir: `usage.input`, `usage.cachedInput`, `usage.output`.
-  - `cliArgs(engine, {persona?, prompt, resumeId?, allowedTools?, model?}): string[]`. Ofis `cliArgs` mantığı: claude `-p --output-format stream-json --verbose`, codex `exec --json`, agy `-p --mode accept-edits`. Hiçbir zaman `--dangerously-skip-permissions` içermez.
-  - `findBin(engine): string | null`. `PATH` üzerinde `claude`, `codex`, `agy` (Windows'ta `.cmd` ve `.exe` de denenir).
+  - `normalizeEngine(name): 'claude'|'codex'|'antigravity'`
+    - `agy` ve `gemini` → `antigravity`.
+    - Bilinmeyen ad hata atar.
+  - `parseLine(engine, line): ParsedLine | null`
+    - `ParsedLine = {sessionId?, text?, final?, error?, usage?, rate?}`. `usage` Global Constraints'teki biçimdedir.
+    - Bozuk ya da boş satırda `null` döner, Ofis ile aynı. Kurallar `cli.js:32-64` ile aynıdır.
+    - Bilinçli farklar:
+      - **Codex:** `turn.completed.usage` normalize edilir: `input = input_tokens - (cached_input_tokens ?? 0)`, `cachedInput = cached_input_tokens`.
+      - **Claude:** `result` satırında `input = input_tokens`, `cachedInput = cache_read_input_tokens`, `cacheWrite = cache_creation_input_tokens`. `is_error` ise `{error, usage}` döner.
+      - **antigravity:** `result.status !== 'SUCCESS'` ya da boş `response` olursa `{error}` döner.
+  - `cliArgs(engine, {cwd, persona?, personaFile?, prompt, resumeId?, allowedTools=[], network=false}): string[]`. **`cli.js:17-29` birebir taşınır:**
+    - **codex:** `exec --json -s workspace-write [-c sandbox_workspace_write.network_access=true] --skip-git-repo-check -C <cwd> [resume <id>] -`. Prompt stdin'den verilir.
+    - **antigravity:** `-p <persona+görev> --output-format stream-json --sandbox --mode accept-edits [--conversation <id>]`
+    - **claude:** `-p --output-format stream-json --verbose --permission-mode acceptEdits [--append-system-prompt <p> | --append-system-prompt-file <f>] [--resume <id>] [--allowedTools …]`. Prompt stdin'den verilir.
+  - `promptVia(engine): 'stdin'|'argv'`. claude ve codex → `stdin`, antigravity → `argv`.
+  - `findBins(): {claude?, codex?, antigravity?}`. `cli.js:160-198` taşınır. Bakılan yerler:
+    - PATH'teki `.exe` dosyaları
+    - claude için Roaming, Claude-Data ve MSIX Packages altındaki `claude.exe`
+    - `%LOCALAPPDATA%\OpenAI\Codex\bin`
+    - `%LOCALAPPDATA%\agy\bin`
+    - `.cmd` ve `.bat` dosyaları elenir.
 
-Fixture dosyaları: Ofis testlerindeki örnek satırlardan alınır, her motor için 4–6 satır: init/oturum, metin, araç, sonuç ve kullanım. Oturum kimlikleri sahte UUID'lerle değiştirilir.
+Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım. Ayrıca bir hata dosyası: `*-error.jsonl`. Oturum kimlikleri sahte UUID'dir.
 
 - [ ] **Step 1: Failing tests**
-
-```js
-for (const engine of ['claude','codex','agy']) {
-  test(`${engine}: fixture oturum, metin ve kullanım üretir`, () => {
-    const out = readFileSync(`test/fixtures/engines/${engine}.jsonl`,'utf8').trim().split('\n').map(l => parseLine(engine, l));
-    assert.ok(out.some(p => p.sessionId));
-    assert.ok(out.some(p => p.final && typeof p.text === 'string'));
-    const u = out.find(p => p.usage)?.usage;
-    assert.ok(u && Number.isInteger(u.input) && Number.isInteger(u.output));
+  ```js
+  test('codex kullanımı önbelleği ayırır', () => {
+    const p = parseLine('codex', JSON.stringify({type:'turn.completed', usage:{input_tokens:1000, cached_input_tokens:800, output_tokens:50}}));
+    assert.deepEqual(p.usage, {input:200, cachedInput:800, cacheWrite:0, output:50, known:true});
   });
-  test(`${engine}: bozuk satır çökmez`, () => {
-    assert.deepEqual(parseLine(engine, 'not json {'), {});
-    assert.deepEqual(parseLine(engine, ''), {});
+  test('claude result kullanımı üç parçaya ayrılır', () => { /* input 10, cache_read 900, cache_creation 40 → {input:10, cachedInput:900, cacheWrite:40, …} */ });
+  test('fixture: her motor oturum ve final verir', () => { /* out.some(p => p?.sessionId) && out.some(p => typeof p?.final === 'string') */ });
+  test('agy SUCCESS dışı ve boş cevap hatadır', () => { /* status:'FAILED' → error; status:'SUCCESS', response:'' → error */ });
+  test('bozuk satır null', () => { for (const e of ENGINES) assert.equal(parseLine(e, 'x{'), null); });
+  test('cliArgs Ofis ile birebir', () => {
+    assert.deepEqual(cliArgs('codex', {cwd:'C:/w', prompt:'p', resumeId:'s1', network:true}),
+      ['exec','--json','-s','workspace-write','-c','sandbox_workspace_write.network_access=true','--skip-git-repo-check','-C','C:/w','resume','s1','-']);
+    assert.deepEqual(cliArgs('antigravity', {cwd:'.', persona:'K', prompt:'G', resumeId:'c1'}),
+      ['-p','G','--output-format','stream-json','--sandbox','--mode','accept-edits','--conversation','c1']);
   });
-}
-test('cliArgs hiçbir motorda izin atlatma bayrağı içermez', () => {
-  for (const e of ['claude','codex','agy']) {
-    const a = cliArgs(e, {prompt:'x'}).join(' ');
-    assert.doesNotMatch(a, /dangerously|yolo|bypass/);
-  }
-});
-test('resumeId claude için --resume ekler', () => {
-  assert.ok(cliArgs('claude', {prompt:'x', resumeId:'abc'}).join(' ').includes('--resume abc'));
-});
-```
+  test('hiçbir motorda izin atlatma bayrağı yok', () => { /* /dangerously|yolo|bypass/ */ });
+  test('normalizeEngine agy → antigravity', () => {});
+  test('findBins .cmd döndürmez', () => { /* sahte PATH dizininde a.cmd ve a.exe → .exe seçilir */ });
+  ```
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** — `feat(engines): Ofis ile birebir argümanlar, normalize kullanım, ikili arama`
 
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.** Ofis'teki `parseCliLine` ve `cliArgs` okunup aynı davranışla yeniden yazılır. Ofis dosyasına dokunulmaz.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `feat(engines): claude, codex, agy ayrıştırıcı ve argümanları`
-
-### Task 5: Kullanım ve bütçe
+### Task 5: Kullanım, bütçe, limit algılama
 
 **Files:**
-- Create: `src/core/costs.js`
-- Test: `test/core/costs.test.js`
+- Create `src/core/costs.js`, `src/core/limits.js`.
+- Test `test/core/costs.test.js`, `test/core/limits.test.js`.
 
 **Interfaces:**
-- Consumes: `openDb`, `append`.
-- Produces:
-  - `recordUsage(db, {runId, agentId?, engine, model?, usage:{input, cachedInput, output}}): void`. Bir `usage.recorded` olayı da yazar.
-  - `setBudget(db, {id, scope, scopeId?, window, limitTokens, warnPercent=80, hardStop=true}): void`
-  - `budgetStatus(db, {engine?, agentId?, now=new Date()}): {state:'ok'|'warn'|'stop', used:number, limit:number|null, budgetId:string|null}`
-    - Uygun bütçelerin (global + engine + agent) en kötü durumu döner.
-    - `used` = penceredeki `input + output` toplamı. Önbellekli girdi sayılmaz, bilgi için ayrı tutulur.
-    - Pencere: `month` için takvim ayının başı, `day` için gün başı. Yerel saat kullanılır.
-    - Kurallar: `used >= limit` ve `hardStop` → `stop`. `used >= limit*warnPercent/100` → `warn`.
+- `costs.js`:
+  - `recordUsage(db, {runId, agentId?, engine, model?, usage}): void`
+  - `setBudget(db, {id, scope, scopeId?, window, limitTokens, warnPercent=80, hardStop=true})`
+  - `budgetStatus(db, {engine?, agentId?, at=now()}): {state:'ok'|'warn'|'stop', used, limit, budgetId, unknownRuns:number}`
+    - Sonuç: uygun bütçelerin en kötüsü.
+    - `used = input + cacheWrite + output`. `cachedInput` sayılmaz.
+    - `unknownRuns`: penceredeki `known=0` kayıt sayısı. agy bu sayede görünür olur.
+- `limits.js`:
+  - `detectLimit({error?, rate?, text?}): {limited:boolean, retryAt:number|null}`
+    - `LIMIT_RE` Ofis `runner.js:57`'den taşınır.
+    - claude `rate_limit_event.rate_limit_info.resetsAt` (saniye) ms'e çevrilir.
+    - Saat yoksa `retryAt = now() + 15 dk`.
 
 - [ ] **Step 1: Failing tests**
+  - `'%80 uyarı, %100 durdurma'`: Değerler önceki planla aynı; `cacheWrite` kullanılır.
+  - `'cachedInput bütçeye girmez'`
+  - `'motor bütçesi yalnız o motoru durdurur'`
+  - `'agy kayıtları unknownRuns olarak sayılır'`
+  - `'hardStop kapalıysa sınır aşılsa da warn'`
+  - `'bütçe yoksa ok ve limit null'`
+  - `'detectLimit usage limit metnini yakalar'`: Ofis'teki limit mesajı örnekleri, `turn.failed` metni ve `is_error` metni.
+  - `'rate resetsAt saatini kullanır'`
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** — `feat(core): kullanım, token bütçesi, limit algılama`
 
-```js
-test('%80 uyarı, %100 durdurma', () => {
-  const db = openDb();
-  setBudget(db, {id:'g', scope:'global', window:'month', limitTokens:1000});
-  recordUsage(db, {runId:'r', engine:'codex', usage:{input:700, cachedInput:500, output:99}});
-  assert.equal(budgetStatus(db, {}).state, 'ok');
-  recordUsage(db, {runId:'r', engine:'codex', usage:{input:1, cachedInput:0, output:0}});
-  assert.equal(budgetStatus(db, {}).state, 'warn');
-  recordUsage(db, {runId:'r', engine:'codex', usage:{input:200, cachedInput:0, output:0}});
-  assert.deepEqual(budgetStatus(db, {}), {state:'stop', used:1000, limit:1000, budgetId:'g'});
-});
-test('hardStop kapalıysa sınır aşılsa da warn', () => { /* limit 10, hardStop:false, 20 token → 'warn' */ });
-test('motor bütçesi yalnız o motoru durdurur', () => { /* engine:'codex' bütçesi doldu → codex stop, claude ok */ });
-test('bütçe yoksa ok ve limit null', () => { assert.deepEqual(budgetStatus(openDb(), {}), {state:'ok', used:0, limit:null, budgetId:null}); });
-```
-
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement** `src/core/costs.js`.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `feat(core): kullanım kaydı ve token bütçeleri`
-
-### Task 6: Politika ve makine kontrolleri
+### Task 6: Politika, makine kontrolleri, adaptör
 
 **Files:**
-- Create: `src/core/policy.js`, `src/core/checks.js`
-- Test: `test/core/policy.test.js`, `test/core/checks.test.js`
+- Create `src/core/policy.js`, `src/core/checks.js`, `src/engines/adapter.js`, `test/fixtures/fake-engine.mjs`.
+- Test her biri için ayrı.
 
 **Interfaces:**
-- Produces:
-  - `toolsFor(engine, {role?:'writer'|'reader', network?:boolean}): string[]`. Ofis `runner.js` içindeki `SAFE_BASH` ve `toolsFor` ile aynı liste. `reader` yazma araçlarını içermez.
-  - `ACTIONS_NEEDING_APPROVAL = ['git.push','git.merge','fs.delete','credits.spend','external.send']`
-  - `decide(action: string): 'allow'|'ask'|'deny'`. Listedekiler `ask`. `secrets.read` ve `permissions.bypass` her zaman `deny`. Diğerleri `allow`.
-  - `runChecks(cwd, commands: string[], {timeoutMs=120000}?): Promise<{ok:boolean, results:{cmd, code, ms, tail:string}[], needsLlmReview:boolean}>`
-    - Komutlar sırayla `spawn` ile çalışır, `shell: true`.
-    - `tail` çıktının son 2000 karakteri.
-    - İlk başarısızlıkta durur.
-    - `needsLlmReview` = `ok`. Makine kontrolü düşerse LLM incelemesine gerek yok, görev doğrudan geri döner.
+- **`policy.js`:**
+  - `toolsFor(agent: {engine, department?, capabilities?}, {network?}): string[]`. `runner.js:27-31,116-123` mantığı taşınır:
+    - claude dışı motorlar `[]` alır, sandbox'a güvenilir.
+    - claude için temel liste `SAFE_BASH` ve dosya araçlarıdır.
+    - `capabilities` içinde varsa eklenenler:
+      - `reverse` → `READ_BASH` + `mcp__rea__*`
+      - `krea` → `mcp__krea-ai__*`
+      - `godot` → Godot komut kalıpları
+      - `roblox` → `rojo`, `selene`, `stylua`, `lune`, `rokit` komut kalıpları
+  - `decide(action): 'allow'|'ask'|'deny'`
+    - `ask`: `git.push`, `git.merge`, `fs.delete`, `credits.spend`, `external.send`, `roblox.publish`, `roblox.cloud_exec`, `roblox.insert_asset`
+    - `deny`: `secrets.read`, `permissions.bypass`
+- **`checks.js`:**
+  - `runChecks(cwd, commands, {timeoutMs=120000, env?}?): Promise<{ok, results:{cmd, code, timedOut, ms, tail}[], needsLlmReview}>`
+    - Komut `cmd.exe /d /s /c "chcp 65001>nul & <cmd>"` ile çalışır (Windows'ta UTF-8 çıktı).
+    - Zaman aşımında `taskkill /T /F` çalışır, `code:null` ve `timedOut:true` yazılır.
+    - İlk hatada durur.
+- **`adapter.js`:**
+  - `createCliAdapter(engine, {bin, timeoutMs=3600000, spawnImpl?, extraPath?}): Adapter`
+  - `Adapter.execute({prompt, persona?, cwd, resumeId?, allowedTools?, network?, signal?, onEvent?}) → {text, final, sessionId, usage, rate, error, exitCode, timedOut}`
+    - Ortam: `FEYZULLAH_AGENTS=1` (hook'lar susar), `extraPath` PATH'in önüne eklenir.
+    - Prompt verme yolu:
+      - stdin motorlarında prompt stdin'e yazılıp kapatılır.
+      - antigravity'de persona + görev 24.000 karakteri aşarsa `<cwd>/.fa-gorev.md` dosyasına yazılır, kısa bir yönlendirme gider, dosya iş bitince silinir.
+      - claude persona'sı 24.000 karakteri aşarsa geçici dosyaya yazılır ve `--append-system-prompt-file` ile verilir.
+    - Çıktı okuma: stdout `StringDecoder('utf8')` ile satırlara bölünür ve her satır `parseLine`'a verilir. Ayrıca `last_output_at` güncellenir.
+    - İptal (`signal`) ya da zaman aşımında Windows'ta `taskkill /pid /T /F`, diğer sistemlerde `kill(-pid)` çalışır.
+    - Çıkış kodu 0 değilse hata atılmaz; sonuçta döner.
 
 - [ ] **Step 1: Failing tests**
+  - `'reverse yeteneği rea araçlarını ekler, codex boş liste alır'`
+  - `'roblox.publish ask, secrets.read deny'`
+  - `'runChecks ilk hatada durur'`
+  - `'zaman aşımı timedOut true ve code null'`
+  - `'runChecks Türkçe çıktıyı bozmaz'`: `node -e "console.log('şğüİı')"` → tail içinde aynen.
+  - `'adaptör stdin ile prompt verir'`: fake-engine stdin'i okuyup `{"type":"result","result":<stdin>}` basar.
+  - `'agy uzun prompt dosyaya yazılır ve iş sonunda silinir'`
+  - `'adaptör iptalinde alt süreç ağacı ölür'`: fake-engine bir torun süreç başlatır; iptalden sonra torun pid'i yaşamaz.
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** — `feat: politika, makine kontrolleri, CLI adaptörü`
 
-```js
-test('onay isteyen eylemler ask, sır okuma deny', () => {
-  assert.equal(decide('git.push'), 'ask');
-  assert.equal(decide('secrets.read'), 'deny');
-  assert.equal(decide('fs.read'), 'allow');
-});
-test('reader rolü yazma aracı almaz', () => {
-  assert.ok(!toolsFor('claude', {role:'reader'}).some(t => /^(Write|Edit)/.test(t)));
-});
-test('runChecks ilk hatada durur ve LLM incelemesi istemez', async () => {
-  const r = await runChecks(process.cwd(), ['node -e "process.exit(0)"', 'node -e "process.exit(3)"', 'node -e "console.log(1)"']);
-  assert.equal(r.ok, false); assert.equal(r.results.length, 2); assert.equal(r.results[1].code, 3); assert.equal(r.needsLlmReview, false);
-});
-test('runChecks zaman aşımında kod null ve ok false', async () => {
-  const r = await runChecks(process.cwd(), ['node -e "setTimeout(()=>{},5000)"'], {timeoutMs:200});
-  assert.equal(r.ok, false); assert.equal(r.results[0].code, null);
-});
-```
+### Task 7: Zamanlayıcı
 
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.** Zaman aşımında süreç ağacı öldürülür: Windows'ta `taskkill /pid <pid> /T /F`, diğer sistemlerde `kill('SIGKILL')`.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `feat(core): araç politikası ve makine kontrolleri`
-
-### Task 7: Adaptör ve zamanlayıcı
-
-**Files:**
-- Create: `src/engines/adapter.js`, `src/core/scheduler.js`, `test/fixtures/fake-engine.mjs`
-- Test: `test/engines/adapter.test.js`, `test/core/scheduler.test.js`
+**Files:** Create `src/core/scheduler.js`. Test `test/core/scheduler.test.js`.
 
 **Interfaces:**
-- Consumes: `parseLine`, `cliArgs` (Task 4); `readyTasks`, `checkoutTask`, `startRun`, `finishRun` (Task 3); `recordUsage`, `budgetStatus` (Task 5); `append` (Task 2).
-- Produces:
-  - `Adapter = {engine, execute({prompt, cwd, resumeId?, signal?, onEvent?}): Promise<{text, sessionId, usage, exitCode}>}`
-  - `createCliAdapter(engine, {bin?, timeoutMs=1800000, spawnArgs?}): Adapter`
-    - `bin` ve `spawnArgs` testte fake-engine'e yönlendirmek için kullanılır.
-    - stdout satır satır `parseLine`'a gider, her `ParsedLine` `onEvent`'e iletilir.
-    - `final.text` döner. `final` yoksa son `text` döner.
-    - Çıkış kodu sıfır değilse `execute` hata atmaz, `exitCode` ile döner.
-  - `runReady({db, adapters: Record<string, Adapter>, maxParallel: Record<string, number> = {claude:1, codex:3, agy:2}, cwd}): Promise<{started:number, done:number, failed:number, skippedBudget:number}>`
-    - Döngü: `readyTasks` → her görev için motor (`task.engine`, yoksa `codex`) → `budgetStatus({engine})`.
-      - Sonuç `stop` ise görev `blocked` olur, `budget.blocked` olayı yazılır, görev atlanır.
-    - Görev başına: `startRun` → `checkoutTask` (false ise atla) → `adapter.execute` → `recordUsage` → `finishRun`. `exitCode===0` ise `done`, değilse `failed`.
-    - Motor başına eşzamanlı çalışma `maxParallel[engine]` değerini aşmaz.
-    - Bir görev bitince yeni hazır olanlar aynı çağrıda alınır. Hazır görev ve çalışan iş kalmayınca fonksiyon döner.
+- Consumes: Task 3 (`readyTasks`, `claimTask`, `finishRun`, `getSession`, `saveSession`), Task 5 (`recordUsage`, `budgetStatus`, `detectLimit`), Task 6 (`Adapter`).
+- Produces: `runReady({db, adapters, maxParallel = {claude:1, codex:3, antigravity:2}, cwd, fallback = {codex:['claude'], antigravity:['codex','claude'], claude:['codex']}}): Promise<{done, failed, blocked, skippedBudget}>`
 
-`fake-engine.mjs`: Argümanlarından `--lines <dosya>` ve `--exit <n>` okur. Dosyadaki satırları 5 ms arayla basar, sonra `n` koduyla çıkar. `--sleep <ms>` verilirse çıkmadan önce bekler.
+Döngü, her hazır görev için:
+1. Motor seçilir: `task.engine ?? 'codex'`.
+2. `budgetStatus` `stop` dönerse görev `blocked` olur, `budget.blocked` olayı yazılır.
+3. `claimTask` ile görev alınır.
+4. `getSession` ile oturum varsa `resumeId` olarak verilir.
+5. `execute` çalışır, sonra `recordUsage`.
+6. Run durumu belirlenir:
+   - `exitCode===0 && !error && final != null` → `succeeded`.
+   - `detectLimit` sınır bulursa → `limited` ve `retryAt`. `fallback[engine]` içinde limiti olmayan motor varsa görev **aynı turda** o motorla yeniden kuyruğa girer (Ofis'teki yedek motor davranışı).
+   - `timedOut` → `timed_out`.
+   - Diğer durumlar → `failed`.
+7. Oturum kaydedilir.
+
+Resume hatası (bilinmeyen oturum) olursa oturum silinir ve görev bir kez oturumsuz denenir (Paperclip `isClaudeUnknownSessionError`).
 
 - [ ] **Step 1: Failing tests**
-
-```js
-test('adaptör fixture akışından metin, oturum ve kullanım döner', async () => {
-  const a = createCliAdapter('claude', {bin: process.execPath, spawnArgs: () => ['test/fixtures/fake-engine.mjs','--lines','test/fixtures/engines/claude.jsonl','--exit','0']});
-  const events = []; const r = await a.execute({prompt:'x', cwd:'.', onEvent: e => events.push(e)});
-  assert.equal(r.exitCode, 0); assert.ok(r.sessionId); assert.ok(r.text.length > 0); assert.ok(events.length >= 3);
-});
-test('zamanlayıcı DAG sırasına uyar ve paralelliği sınırlar', async () => {
-  const db = openDb(); let live = 0, peak = 0; const order = [];
-  const fake = {engine:'codex', async execute({prompt}) { live++; peak = Math.max(peak, live); await sleep(20); order.push(prompt); live--; return {text:'ok', sessionId:'s', usage:{input:1,cachedInput:0,output:1}, exitCode:0}; }};
-  const a = createTask(db,{title:'a',prompt:'a',engine:'codex'}), b = createTask(db,{title:'b',prompt:'b',engine:'codex'}), c = createTask(db,{title:'c',prompt:'c',engine:'codex'}), d = createTask(db,{title:'d',prompt:'d',engine:'codex'});
-  addDependency(db, d.id, a.id); addDependency(db, d.id, b.id); addDependency(db, d.id, c.id);
-  const r = await runReady({db, adapters:{codex:fake}, maxParallel:{codex:2}, cwd:'.'});
-  assert.equal(r.done, 4); assert.equal(peak, 2); assert.equal(order.at(-1), 'd');
-});
-test('başarısız görev bağımlısını bekletir, diğerleri sürer', async () => { /* a exitCode 1 → a failed, b (a'ya bağlı) todo kalır, c done */ });
-test('motor bütçesi dolunca görev blocked olur', async () => { /* setBudget engine codex 1 token, usage 1 → task blocked, skippedBudget 1 */ });
-```
-
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement** `createCliAdapter` (`node:child_process.spawn`, `readline`, `AbortSignal` ile iptal) ve `runReady`. Havuz: motor başına sayaç ve bir `Promise.race` döngüsü.
-- [ ] **Step 4: Run, expect PASS.**
-- [ ] **Step 5: Commit** — `feat(core): CLI adaptörü ve DAG zamanlayıcı`
+  - `'DAG sırası ve paralellik sınırı'`: `peak == 2`, son `d`.
+  - `'başarısız görevin bağımlısı bekler, diğerleri sürer'`
+  - `'exit 0 ama error varsa failed'`
+  - `'limitte görev yedek motora geçer'`: codex sahte adaptörü limit hatası döner, claude sahte adaptörü başarılı → görev `done` olur, iki run vardır (biri `limited`).
+  - `'yedek yoksa blocked ve retry_at dolu'`
+  - `'bütçe dolu motor blocked'`
+  - `'ikinci çalıştırmada görev oturumu resumeId olarak gider'`
+  - `'bilinmeyen oturum hatasında oturumsuz bir kez yeniden dener'`
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** — `feat(core): DAG zamanlayıcı, yedek motor, görev başına oturum`
 
 ### Task 8: `fa` komutu ve hız ölçümü
 
 **Files:**
-- Create: `src/cli.js`, `bin/fa.js`
-- Modify: `package.json`. `"bin": {"fa": "bin/fa.js"}` ve `"scripts": {"bench": "node bin/fa.js bench"}` eklenir.
-- Test: `test/cli.test.js`
+- Create `src/cli.js`, `bin/fa.js`.
+- Modify `package.json`: `bin`, `scripts.bench` eklenir.
+- Test `test/cli.test.js`.
 
 **Interfaces:**
-- Consumes: Task 1–7'nin hepsi.
-- Produces: `main(argv: string[], {dbPath?, stdout?}): Promise<number>` (çıkış kodu). Komutlar:
-  - `fa init`: `./.fa/fa.db` oluşturur.
-  - `fa add "<başlık>" [--engine codex] [--after <id>]...`: görev ekler ve id basar.
-  - `fa run [--parallel codex=3,claude=1]`: `runReady` gerçek adaptörlerle çalışır, olaylar tek satırlık özetlerle basılır.
-  - `fa status`: görev sayıları duruma göre, son 10 olay, bütçe durumu.
-  - `fa bench`: `openDb` + 1000 görev ekleme + `readyTasks` sürelerini ölçer, ms olarak basar. Hedef: çekirdek açılışı 1 saniyenin altında (PLAN §3.4).
+- `main(argv, {dbPath?, stdout?}): Promise<number>`. Açılışta `recoverStale` çağrılır. Komutlar:
+  - `fa init [--kind generic|roblox]`
+  - `fa add "<başlık>" [--engine] [--after <id>]… [--prompt-file <f>]`
+  - `fa run [--parallel codex=3,claude=1]`
+  - `fa status`: duruma göre sayılar, son 10 olay, bütçe, `unknownRuns`.
+  - `fa bins`: bulunan motor yolları.
+  - `fa bench`: 1000 görev + `readyTasks` süresi.
 
 - [ ] **Step 1: Failing tests**
+  - `'init, add, status uçtan uca'`
+  - `'bilinmeyen komut 2 döner'`
+  - `'bench 1000 görevde 1 saniyenin altında'`
+  - `'açılışta takılı run kurtarılır'`
+- [ ] **Step 2–4:** FAIL → implement → PASS (`npm test` hepsi).
+- [ ] **Step 5: Duman testi (elle)**
+  1. `fa bins`
+  2. `fa init`
+  3. `fa add "README başlığını tek cümleyle özetle" --engine antigravity`
+  4. `fa run`
+  5. `fa status`
 
-```js
-test('init, add, status uçtan uca', async () => {
-  const dir = mkdtempSync(join(tmpdir(),'fa-')); const dbPath = join(dir,'fa.db'); const out = [];
-  const stdout = {write: s => out.push(s)};
-  assert.equal(await main(['init'], {dbPath, stdout}), 0);
-  assert.equal(await main(['add','merhaba','--engine','agy'], {dbPath, stdout}), 0);
-  await main(['status'], {dbPath, stdout});
-  assert.match(out.join(''), /todo\s+1/);
-});
-test('bilinmeyen komut 2 döner', async () => { assert.equal(await main(['uç'], {stdout:{write(){}}}), 2); });
-test('bench 1000 görevde 1 saniyenin altında', async () => {
-  const out = []; await main(['bench'], {dbPath:':memory:', stdout:{write: s => out.push(s)}});
-  const ms = Number(out.join('').match(/toplam (\d+) ms/)[1]); assert.ok(ms < 1000, `${ms} ms`);
-});
-```
-
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement** `main`. Argümanlar `node:util.parseArgs` ile ayrıştırılır. `bin/fa.js` yalnızca `process.exit(await main(process.argv.slice(2)))` çağırır.
-- [ ] **Step 4: Run the full suite** — `npm test` → hepsi PASS.
-- [ ] **Step 5: Gerçek motorla duman testi (elle):**
-  1. `node bin/fa.js init`
-  2. `node bin/fa.js add "README'deki başlığı oku ve tek cümleyle özetle" --engine agy`
-  3. `node bin/fa.js run`
-
-  Beklenen: görev `done` olur, `status` içinde kullanım görünür. Motor yoksa ya da limit doluysa görev `failed` olur ve hata olayda yazılıdır.
-- [ ] **Step 6: Commit** — `feat: fa komutu (init, add, run, status, bench)`
+  Beklenen: görev `done` olur ve `unknownRuns 1` görünür. Aynısı `--engine codex` ile tekrarlanır; bu sefer kullanım sayıları dolu gelir.
+- [ ] **Step 6: Commit** — `feat: fa komutu`
 
 ---
 
 ## Aşama 1 bitti sayılır, eğer
 
-- `npm test` yeşil, dış bağımlılık yok.
-- `fa bench` 1000 görevde 1 saniyenin altında.
-- Duman testinde en az bir gerçek motor (agy ya da codex) görevi bitirip kullanımı yazmış.
-- `OZELLIK-HARITASI.md` dosyasındaki A1 maddeleri (1, 2, 3, 4 veri, 5, 17 liste) karşılanmış.
+- `npm test` yeşil.
+- `fa bench` 1 saniyenin altında.
+- Gerçek antigravity ve codex görevleri bitmiş.
+- Limit testinde yedek motora geçiş çalışıyor.
+- Süreç öldürülüp yeniden açılınca `recoverStale` görevi kurtarıyor.

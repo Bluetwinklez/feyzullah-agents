@@ -35,7 +35,13 @@ Office'teki deneyimle oturmuş kurallar aynen korunur:
 
 - **Beyin Claude.** Planlama, mimari, güvenlik ve sonuç kontrolü Claude'da.
 - **Asıl iş yükü Codex'te** (kod, test, build), **agy'de** (belge, araştırma). agy terminal komutu çalıştıramaz; bu yüzden ona komut işi verilmez.
-- Yedek motor sırası Codex > agy > Claude. Limit dolunca otomatik geçilir.
+- Limit dolunca yedek motora otomatik geçilir. Ofis'teki sıra (`runner.js:58`):
+  - codex → claude
+  - antigravity (agy) → codex → claude
+  - claude → codex
+
+  "Codex > agy > Claude" sırası yalnız düzeltici seçiminde kullanılıyor (`admin.js:209`).
+- Motor kimliği Ofis'teki gibi `antigravity`. `agy` yalnız komutun adı ve takma ad.
 - Aynı klasördeki görevler sırayla ve aynı git dalında çalışır, farklı klasördekiler paralel.
 - Kontrolcü iddiaya değil kanıta bakar. Belirsiz kararda iş geçer, sonsuz döngü olmasın.
 
@@ -86,7 +92,10 @@ Office'te yoktu, bu projenin asıl farkı bu.
 
 - Komut izinleri office'teki gibi uzman başına beyaz listeyle verilir. `--dangerously-skip-permissions` kullanılmaz.
 - Push, silme ve dış servise gönderme işleri her zaman kullanıcı onayına gider. Para ya da kredi harcayan işler de (Krea, Flow) onaya gider.
-- API anahtarları yalnız DPAPI ile şifreli yerel dosyada durur, repoya ve loglara girmez.
+- API anahtarları repoya, SQLite'a ve loglara girmez. Yalnız Windows Kimlik Yöneticisi'nde ya da DPAPI ile şifreli dosyada durur.
+  - Electron olmadığı için DPAPI'ye PowerShell `ProtectedData` köprüsüyle erişilir.
+  - Anahtar sürece yalnız ortam değişkeni olarak verilir, komut satırına konmaz.
+- Roblox Open Cloud anahtarları yalnız test place'ine yetkili, en az izinli anahtarlar olur. Yayın anahtarı her kullanımda onay ister. Ayrıntı: [`ROBLOX.md`](ROBLOX.md).
 - CAPTCHA ve bot kontrolü atlatma yok. Noesis'in "önerilmeyen" listesindeki araçlar kullanılmaz.
 
 ### 3.4 Office'ten farkı: hız ve optimizasyon
@@ -99,7 +108,8 @@ Bu proje Office'in yeni bir kopyası olmayacak. Office'in kodunda ölçülen yav
 | Aynı klasördeki görevler sırayla, aynı dalda bekliyor | Paralel çalışabilecek işler birbirini bekliyor | **Bağımlılık grafiği (DAG) zamanlayıcısı.** Görev yalnız gerçekten bağımlı olduğu işi bekler. Bağımsız işler aynı projede de ayrı worktree'lerde paralel çalışır, sonra birleştirilir |
 | Her kontrol bir LLM çağrısı (Reality Checker), en fazla 2 tur ve ardından düzeltici | Yavaş ve token harcıyor | **Önce makine kontrolü:** test, lint, build ve dosya varlığı. Bunlar geçerse LLM yalnız gereken yerde inceler. Basit işlerde LLM kontrolü atlanır |
 | Uzman raporları 4000 ile 6000 karakterde kesiliyor (`admin.js`) | Bağlam kaybı, yönetici eksik bilgiyle karar veriyor | **Yapılandırılmış sonuç:** değişen dosyalar, test sonucu ve kısa özet. Ayrıntı gerektiğinde dosyadan okunur |
-| Her görev için yeni CLI süreci | Soğuk başlangıç gecikmesi | **Sıcak oturum havuzu:** motor başına `--resume` ile yeniden kullanılan oturumlar, kuyruktan iş alan işçiler |
+| Her görev için yeni CLI süreci, bağlam her seferinde baştan veriliyor | Tekrar eden bağlam token harcıyor | **Görev başına oturum** (Paperclip `agent_task_sessions`). Aynı görevin düzeltme turları `--resume` / `resume <id>` / `--conversation` ile devam eder. Kimlik metni ve bağlam dosyaları bayt bayt sabit tutulur, böylece sağlayıcı tarafında önbellek tutar. CLI süreci yine her seferinde soğuk başlar; "sıcak süreç" vaadi yok |
+| Koordinasyon için LLM çağrısı (yönetici her adımda) | Token ve gecikme | **Deterministik zamanlayıcı** (Bernstein yaklaşımı). LLM yalnız planlama ve incelemede çağrılır, sıralama ve dağıtım kodla yapılır |
 | Noesis yok, her seferinde bağlam elle veriliyor | Aynı bilgi tekrar tekrar aranıyor | **Bağlam önbelleği:** Noesis sonuçları sorguya göre SQLite FTS'te önbelleğe alınır, görevlere özet olarak verilir |
 | Tek model seçimi, motor sabit | Küçük işte de büyük model çalışıyor | **İş boyutuna göre yönlendirme:** sınıflandırma ve kısa işler hızlı ve ucuz modele, mimari Claude'a. Claude API ajanlarında prompt önbelleği açık |
 | Electron arayüz, durumun tamamı her güncellemede yeniden çiziliyor (`office-model.js`) | Ağır, bellek tüketiyor | **Arayüzsüz çekirdek** + tek dosyalık web arayüzü (60 KB altı). SSE ile yalnız değişen olay gönderilir |
@@ -122,7 +132,7 @@ Hedefler aşama 2'den itibaren `fa bench` komutuyla ölçülecek. Office ile ayn
 | Konu | Seçim | Neden |
 |---|---|---|
 | Dil | Node 24, ESM, JavaScript (JSDoc tipleri) | Office ile aynı, kod taşınabilir |
-| Test | `node --test` | Office'teki 158 testin yapısı korunur |
+| Test | `node --test` | Ofis'teki yaklaşık 177 testin yapısı örnek alınır |
 | Durum | SQLite (`node:sqlite`), WAL kipi, append-only olay kaydı | Office'te JSON dosyaları 400 KB'a çıktı ve her seferinde baştan yazılıyordu |
 | Zamanlama | DAG zamanlayıcı + motor başına işçi havuzu | Bağımsız işler paralel, bağımlılar sırayla |
 | Arayüz | CLI (`fa run "<komut>"`) + yerel HTTP/SSE + tek dosyalık web arayüzü, Electron yok | Hafif, hızlı, telefondan da açılır |
@@ -142,7 +152,7 @@ Her aşama bitince ayrı bir PR açılır, testler geçer, ardından main'e alı
 | 4 | Uzman havuzu | **5 departman** (Build, Design, Grow, Make, Run), org şeması, `agents/*.md`, skill bağları ve testleri, ajan başına model | Her departmandan bir örnek görev geçiyor |
 | 5 | İşletim | worktree, rutinler (cron), bekçi ve kurtarma, onay kapıları, bütçe zorlama, sır kasası, yedek motor | Limit dolunca iş başka motorla bitiyor, push onaysız gitmiyor |
 | 6 | Santral ve API | Yerel HTTP/SSE API, Santral arayüzü (`docs/tasarim/v2`), yöneticiyle sohbet, belgeye pasaj yorumu, mobil | Hedefler tablosundaki arayüz ölçütleri tutuyor |
-| 7 | Paketler | Alan paketleri, içe/dışa aktarma, eklentiler, iş kuyruğu, işe alma önerileri | Her paketin örnek akışı belgeli |
+| 7 | Paketler | **Roblox ilk paket** ([ROBLOX.md](ROBLOX.md)), diğer alan paketleri, içe/dışa aktarma, eklentiler, iş kuyruğu, işe alma önerileri | Her paketin örnek akışı belgeli |
 
 Paperclip'in bütün özelliklerinin bu aşamalara nasıl dağıldığı: [`OZELLIK-HARITASI.md`](OZELLIK-HARITASI.md).
 

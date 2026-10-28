@@ -81,14 +81,74 @@ Her ajan bir departmana bağlı. Yönetici CEO konumunda. Santral'da satırlar d
 
 Maliyet yaklaşık 11 model çağrısı. Danışmanlar Codex ya da agy'de, başkan Claude'da çalışır. Yalnız `council: true` işaretli kararlarda devreye girer. Kod kendimiz yazılır: Karpathy'nin reposunda ve skill reposunda lisans yok. Aşama: A2.
 
+## İnceleme sonrası eklenenler (28 Ekim 2026)
+
+Plan Ofis'in koduyla, Paperclip ile ve yeni repolarla karşılaştırıldı. Ayrıntı: `BENZER-PROJELER.md` "Ek tarama".
+
+### Ofis'te olup ilk planda unutulanlar
+
+| # | Özellik | Ofis'te | Aşama |
+|---|---|---|---|
+| 33 | Uzun prompt: stdin ya da dosya (24.000 karakter sınırı) | `cli.js:70-93` | A1 |
+| 34 | Limit algılama, kota açılma saati, yedek motor | `runner.js:57-71,168-197`, `cli.js:54` | **A1**. Limitteki görev `blocked` olur, `failed` olmaz |
+| 35 | Hata semantiği: çıkış 0 olsa bile `is_error`, `turn.failed`, agy boş cevap | `cli.js:38-61` | A1 |
+| 36 | Windows ikili arama (Claude masaüstü, MSIX, agy, Codex konumları) ve `.cmd` dışlama | `cli.js:160-198` | A1 |
+| 37 | Ajana göre izin listesi (ters mühendislik → rea, görsel → Krea, Godot yolları) | `runner.js:27-31,116-123` | A1 |
+| 38 | Kimlik metnine eklenen ipuçları (Krea, Godot, kısa yazım stili) | `runner.js:124-135` | A4 |
+| 39 | Prompt Master ve Claude limiti yüksekken onu atlama | `main.js:58-86`, `usage.js:50,107` | A2 |
+| 40 | Git akışı: grup dalı, her turdan sonra commit, `merge --no-ff` + kirli depo kontrolü, `revertMerge`, birleştirme sonrası test, 7 günlük worktree temizliği, `worktreeFate` | `gitwork.js`, `main.js:276-412` | A5 |
+| 41 | Yönetici: işe alma ve çıkarma, esnek cevap ayrıştırma + bir kez düzeltme isteği, bütünleşme kontrolü, kartta yeniden dene ve iptal | `admin.js:127-370` | A2 |
+| 42 | Uzman istatistikleri yöneticiye verilir | `stats.js` | A4 |
+| 43 | Zamanlanmış komutta "limit açılınca çalış" seçeneği | `schedule.js:18` | A5 |
+| 44 | Günlük rapor, ses, telefon köprüsü | `main.js:108,437` | A6 |
+
+### Paperclip'ten düzeltilen ya da eklenenler
+
+| # | Özellik | Not | Aşama |
+|---|---|---|---|
+| 45 | Ayrı görev ve run durum kümeleri (`in_review`, `timed_out`, `interrupted`) | Kontrolcü döngüsü ve kurtarma bunlara dayanır | A1 |
+| 46 | Çökme kurtarma (`reapOrphanedRuns`) | `recoverStale` açılışta çalışır | A1 |
+| 47 | Görev başına oturum (`agent_task_sessions`) | "Sıcak oturum havuzu" fikrinin yerine geldi | A1 |
+| 48 | Bilinmeyen oturumda oturumsuz yeniden deneme | `isClaudeUnknownSessionError` | A1 |
+| 49 | Uyandırma birleştirme (`coalescedCount`, `idempotencyKey`) | Aynı görev için üst üste gelen uyandırmalar tek çalışmaya iner | A2 |
+
+### Yeni repolardan
+
+| # | Özellik | Kaynak | Aşama |
+|---|---|---|---|
+| 50 | Deterministik koordinasyon: sıralama kodla, LLM yalnız plan ve incelemede | Bernstein | A1 |
+| 51 | Birleştirme öncesi kapı: lint + tip + test | Bernstein Janitor | A5 |
+| 52 | HMAC zincirli olay kaydı (kurcalama tespiti) | Bernstein | A5 |
+| 53 | Worktree başına setup/run/teardown betikleri ve port enjeksiyonu (`FA_PORT`) | Emdash | A5 |
+| 54 | Onay bekleyen iş kuyruğu bloklamaz, ajan başka işe geçer | agent-orchestrator dersi | A5 |
+| 55 | CLI çıktısından durum algılama (boşta, meşgul, girdi bekliyor) | ccmanager | A6 |
+| 56 | `fa bench` görev seti: talimat + ortam + doğrulayıcı betik | harbor | A2 |
+| 57 | Ajan ve skill değerlendirmesi (YAML, LLM hakem) | promptfoo | A4 |
+| 58 | Kullanımın ccusage ile çapraz kontrolü | ccusage | A5 |
+| 59 | YAML iş akışı şablonları (paralel grup, koşul) | microsoft/conductor | A2 |
+
+### Roblox paketi
+
+Ayrıntı [`ROBLOX.md`](ROBLOX.md) dosyasında.
+
+| # | Özellik | Aşama |
+|---|---|---|
+| 60 | `roblox` çalışma alanı türü, araç zinciri izinleri, `roblox.*` onay eylemleri | A1 |
+| 61 | `uretim-sirasi.md` → hedef ve görev zinciri, durdurulmuş durumun korunması | A2 |
+| 62 | Noesis Roblox kök sayfası + creator-docs bağlamı | A3 |
+| 63 | Roblox rolleri + 28 skill | A4 |
+| 64 | Doğrulama katmanları 1–4, ff-only autopilot, engelli liste | A5 |
+| 65 | Santral Roblox paneli | A6 |
+| 66 | rocale-cli motor içi test, Studio MCP adaptörü, Mantle ile onaylı yayın | A7 |
+
 ## Kapsam özeti
 
 | Aşama | Paperclip maddeleri | Ek |
 |---|---|---|
-| A1 Çekirdek | 1, 2, 3, 4 (veri), 5, 17 (liste) | Office'ten motor ayrıştırıcıları, DAG, makine kontrolü |
-| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28 | Konsey kipi |
-| A3 Bilgi | 20, 21, 22 | Noesis |
-| A4 Uzmanlar | 11, 12, 13, 19 | 5 departman |
-| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18 | Kullanım limitinde yedek motor |
-| A6 Santral | 23 (pasaj yorumu), 24, 25 | Zaman çizelgesi arayüzü |
-| A7 Paketler | 14, 26, 27, 29, 30 | Alan paketleri |
+| A1 Çekirdek | 1, 2, 3, 4 (veri), 5, 17 (liste), 33–37, 45–48, 50, 60 | Ofis'le birebir motor adaptörleri, DAG, makine kontrolü, limitte yedek motor |
+| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61 | Konsey kipi |
+| A3 Bilgi | 20, 21, 22, 62 | Noesis |
+| A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63 | 5 departman |
+| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64 | Git akışı, birleştirme kapısı |
+| A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65 | Zaman çizelgesi arayüzü |
+| A7 Paketler | 14, 26, 27, 29, 30, 66 | Roblox ilk paket |
