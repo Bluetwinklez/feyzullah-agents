@@ -178,7 +178,7 @@ Departman ve skill haritası (madde 77; ✓ = bu makinede kurulu):
 |---|---|---|
 | Build | Mühendis | superpowers ✓, mattpocock/skills, graphify, gstack |
 | Build | QA | playwright-mcp, security-audit ✓, Codex ikinci görüş ✓ |
-| Design | Ürün tasarımcısı | frontend-design ✓, ui-ux-pro-max, impeccable, taste, Figma MCP (yetki gerekir) |
+| Design | Ürün tasarımcısı | frontend-design ✓, impeccable, hallmark, ai-design-skills, ui-ux-pro-max, taste, Figma MCP (yetki gerekir) |
 | Design | Hareket ve video | hyperframes, Remotion, motion-design ✓ |
 | Grow | Araştırmacı | agent-reach ✓, NotebookLM, last30days |
 | Grow | Pazarlamacı | marketing skill'leri, claude-seo, humanizer |
@@ -190,14 +190,27 @@ Değerlendirilip alınmayanlar:
 - **ForgeGUI MCP:** Lisanssız, 2 yıldızlı, tanıtım içeriği. Roblox'ta doğrulanmamış MCP listesine eklendi.
 - **claude-swarm:** Repo artık yok.
 
+### GitTrend'den (gittrend.io, 28 Ekim 2026)
+
+| # | Özellik | Kaynak | Aşama |
+|---|---|---|---|
+| 83 | **Fil ve japon balığı incelemesi:** Tam bağlamlı ajan ("fil") tasarım belgesini yazar. Hiç bağlam almamış alt ajanlar ("japon balığı") yalnız taslağı ve kaynağı okuyup söylenmemiş varsayımları yakalar. Konsey kipindeki "Yabancı" danışmanın sistemli hali. claude, codex ve agy için hazır eklenti var | google/elephant-goldfish-model (Apache-2.0) | A2 |
+| 84 | **Yaşayan spec'ler:** Kodun yanında birbirine bağlı `SPEC.md` grafı tutulur, ajanlar okur ve günceller. Niyet oturumdan oturuma kaybolmaz | JetBrains/thinkrail (Apache-2.0) | A3 |
+| 85 | **Worktree rafı:** PR birleşen ya da bir hafta dokunulmayan worktree kendiliğinden rafa kalkar, üzerinde çalışılınca geri gelir | JetBrains/thinkrail | A5 |
+| 86 | **Konuma bağlı inceleme yorumu:** Dosya ya da diff satırına bırakılan yorum, yapılandırılmış bağlam olarak ajana gider | JetBrains/thinkrail | A6 |
+| 87 | **Plan adımı başına commit:** Ortak plandaki her adım ayrı commit olur ve ayrı incelenir | JetBrains/thinkrail | A2 |
+| 88 | **Dizin kaynağı kaydı:** Noesis ya da kod dizini hangi kaynakla ve hangi sürümle kurulduğunu kaydeder; değişince yeniden kurulur | HKUDS/DeepTutor (Apache-2.0) | A3 |
+| 89 | **Design departmanı skill'leri:** impeccable (Apache-2.0, ~91k), hallmark (MIT, ~40k), ai-design-skills/landing-page-design (MIT) | GitTrend | A4 |
+| 90 | **Çevrimdışı dosya dönüştürücü:** 263 biçim (PDF, Office, video, ses, e-kitap), yükleme yok. Run departmanının belge işleri için | KnifeLemon/Filee (MIT) | A7 |
+
 ## Kapsam özeti
 
 | Aşama | Paperclip maddeleri | Ek |
 |---|---|---|
 | A1 Çekirdek | 1, 2, 3, 4 (veri), 5, 17 (liste), 33–37, 45–48, 50, 60 | Ofis'le birebir motor adaptörleri, DAG, makine kontrolü, limitte yedek motor |
-| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61, 69, 78, 79 | Konsey kipi |
-| A3 Bilgi | 20, 21, 22, 62, 67, 76 | Noesis |
-| A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63, 77 | 5 departman |
-| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64, 68, 70, 73, 75, 80 | Git akışı, birleştirme kapısı |
-| A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65, 71, 72 | Zaman çizelgesi arayüzü |
-| A7 Paketler | 14, 26, 27, 29, 30, 66, 74, 81, 82 | Roblox ilk paket |
+| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61, 69, 78, 79, 83, 87 | Konsey kipi |
+| A3 Bilgi | 20, 21, 22, 62, 67, 76, 84, 88 | Noesis |
+| A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63, 77, 89 | 5 departman |
+| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64, 68, 70, 73, 75, 80, 85 | Git akışı, birleştirme kapısı |
+| A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65, 71, 72, 86 | Zaman çizelgesi arayüzü |
+| A7 Paketler | 14, 26, 27, 29, 30, 66, 74, 81, 82, 90 | Roblox ilk paket |

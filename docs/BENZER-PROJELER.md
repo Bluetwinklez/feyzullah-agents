@@ -80,3 +80,17 @@ Roblox araçları: [`ROBLOX.md`](ROBLOX.md).
 | [Shubhamsaboo/awesome-llm-apps](https://github.com/Shubhamsaboo/awesome-llm-apps) | 143k | Apache-2.0 | 100+ hazır uygulama şablonu. A7 alan paketleri |
 | [eyaltoledano/claude-task-master](https://github.com/eyaltoledano/claude-task-master) | 28k | Belirsiz | Yalnız fikir: gereksinimden bağımlılıklı görev grafiği, karmaşıklık puanı |
 | [KeygraphHQ/shannon](https://github.com/KeygraphHQ/shannon) | 50k | AGPL-3.0 | Yalnız fikir: kanıtlı güvenlik bulgusu. Araç yalnız kendi uygulamada ve onaylı kullanılır |
+
+## GitTrend taraması (gittrend.io, 28 Ekim 2026)
+
+20 repoya bakıldı. Plana girenler `OZELLIK-HARITASI.md` 83–90. Ayrıntılı liste Noesis'te: "GitTrend bugün: 20 repo (28 Ekim 2026)".
+
+| Repo | Lisans | Ne alındı |
+|---|---|---|
+| google/elephant-goldfish-model | Apache-2.0 | Bağlamsız inceleyiciyle spec doğrulama (83) |
+| JetBrains/thinkrail | Apache-2.0 | Yaşayan spec'ler, worktree rafı, konuma bağlı yorum, adım başına commit (84–87) |
+| HKUDS/DeepTutor | Apache-2.0 | Dizin kaynağı ve sürüm kaydı (88) |
+| pbakaus/impeccable, elayadesign/ai-design-skills | Apache-2.0 / MIT | Design departmanı skill'leri (89) |
+| KnifeLemon/Filee | MIT | Çevrimdışı dönüştürücü (90) |
+
+Alınmayanlar: LinkSwift, VoiceStudio, dossier (AGPL), cleanyourtv, ub-mode, android-ad-cleaner (konu dışı). Önerilmez: dsh-our-free-model (anahtarsız ücretsiz model, ToS riski), dsh-purge (jailbreak), nxnative (korsanlık riski), gpu-unlock (lisanssız, GPU davranışını değiştiriyor).
