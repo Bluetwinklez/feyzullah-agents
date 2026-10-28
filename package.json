@@ -4,9 +4,15 @@
   "private": true,
   "description": "Çok ajanlı yapay zekâ çalışma ortamı (feyzullah-office tabanlı)",
   "type": "module",
-  "engines": { "node": ">=24" },
-  "scripts": {
-    "test": "node --test \"test/**/*.test.js\""
+  "engines": {
+    "node": ">=24"
   },
-  "license": "MIT"
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "bench": "node bin/fa.js bench"
+  },
+  "license": "MIT",
+  "bin": {
+    "fa": "bin/fa.js"
+  }
 }
