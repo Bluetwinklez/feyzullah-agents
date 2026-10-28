@@ -1,5 +1,6 @@
 // DAG zamanlayıcı: hazır görevleri motor başına sınırlı paralellikle çalıştırır. Koordinasyon deterministik;
 // limitte yedek motora geçer (Ofis runner.js FALLBACK), oturumu görev başına sürdürür.
+import { personaFor } from '../agents/registry.js';
 import { normalizeEngine } from '../engines/args.js';
 import { budgetStatus, recordUsage } from './costs.js';
 import { now } from './db.js';
@@ -55,7 +56,7 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
     const run = claimTask(db, task.id, { engine, sessionBefore: resumeId });
     if (!run) return { status: 'lost' };
     const input = {
-      prompt: task.prompt ?? task.title, persona: agent?.persona ?? null, cwd,
+      prompt: task.prompt ?? task.title, persona: personaFor(agent), cwd, model: agent && agent.engine === engine ? agent.model ?? null : null,
       allowedTools: toolsFor({ engine, capabilities: agent?.capabilities }), network: network && engine === 'codex', signal,
     };
     let res = await adapters[engine].execute({ ...input, resumeId });
