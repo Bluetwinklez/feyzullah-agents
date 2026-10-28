@@ -56,6 +56,29 @@ export function budgetStatus(db, { engine = null, agentId = null, at = now() } =
     if (!worst || RANK[state] > RANK[worst.state] || (RANK[state] === RANK[worst.state] && pct > (worst.used / worst.limit) * 100)) worst = cur;
   }
   if (worst) return /** @type {any} */ (worst);
+  // Bütçe yoksa yalnız bugünkü kullanım.
   const m = measure('day', engine, agentId);
   return { state: 'ok', used: m.used, limit: null, budgetId: null, unknownRuns: m.unknown, resetAt: null };
+}
+
+/**
+ * "Bu hızla ne zaman dolar": son `lookbackMs` içindeki kullanım hızına göre her bütçe için tahmin.
+ * exhaustAt null: hız sıfır ya da pencere bitmeden dolmuyor.
+ * @param {Db} db @param {{at?: number, lookbackMs?: number}} [o]
+ */
+export function budgetForecast(db, { at = now(), lookbackMs = 6 * 3600_000 } = {}) {
+  const rate = db.prepare(`SELECT COALESCE(SUM(input + cache_write + output), 0) used FROM usage WHERE at >= ? AND at < ?
+    AND (? IS NULL OR engine = ?) AND (? IS NULL OR agent_id = ?)`);
+  return db.prepare('SELECT * FROM budgets ORDER BY id').all().map((b) => {
+    const e = b.scope === 'engine' ? b.scope_id : null;
+    const a = b.scope === 'agent' ? b.scope_id : null;
+    const { start, end } = windowRange(b.window, at);
+    const used = Number(rate.get(start, at + 1, e, e, a, a).used);
+    const recent = Number(rate.get(Math.max(start, at - lookbackMs), at + 1, e, e, a, a).used);
+    const span = Math.max(60_000, at - Math.max(start, at - lookbackMs));
+    const perMs = recent / span;
+    const left = b.limit_tokens - used;
+    const eta = left <= 0 ? at : perMs > 0 ? at + Math.ceil(left / perMs) : null;
+    return { budgetId: b.id, used, limit: b.limit_tokens, perHour: Math.round(perMs * 3600_000), exhaustAt: eta != null && eta < end ? eta : null, resetAt: end };
+  });
 }
