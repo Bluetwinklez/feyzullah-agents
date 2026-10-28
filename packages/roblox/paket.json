@@ -1,0 +1,24 @@
+{
+  "name": "roblox",
+  "description": "Roblox oyun geliştirme: Rojo/Rokit araç zinciri, doğrulama katmanları 1–4, üretim sırası içe aktarma, Roblox uzmanları.",
+  "kinds": [
+    "roblox"
+  ],
+  "agents": "agents",
+  "module": "index.js",
+  "perf": {
+    "maxParts": 20000,
+    "maxLoadSeconds": 30
+  },
+  "blocked": [
+    "notpoiu",
+    "ExecRobloxMCP",
+    "roblox-ai-bypass-plugin",
+    "Roblox-Live-Bridge-MCP",
+    "6xvl/robloxstudio-mcp",
+    "ZeroScript",
+    "forge-context-engine",
+    "RobloxForge-Intelligence",
+    "forgegui"
+  ]
+}

@@ -12,7 +12,9 @@ Genel amaçlı, çok ajanlı (multi-agent) yapay zekâ çalışma ortamı. Kod, 
 
 ## Durum
 
-**Aşama 0: plan ve ortam.** Henüz çalışan kod yok.
+**Aşama 1–7 kodlandı** (çekirdek, yönetici, bilgi, uzmanlar, işletim, Santral, paketler). `npm test` ile 146 test. Komutlar: `node src/cli.js` (`fa`).
+
+- [Paketler ve örnek akışlar](docs/PAKETLER.md)
 
 - [Plan ve aşamalar](docs/PLAN.md)
 - [Veri kaynakları](docs/KAYNAKLAR.md)
