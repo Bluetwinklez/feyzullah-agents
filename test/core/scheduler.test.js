@@ -78,11 +78,12 @@ test('limitte görev yedek motora geçer', async () => {
 test('yedek yoksa blocked ve retry_at dolu', async () => {
   const db = openDb();
   const t = createTask(db, { title: 'a', engine: 'codex' });
-  const codex = fakeAdapter('codex', () => result({ final: null, error: 'usage limit reached' }));
+  const codex = fakeAdapter('codex', () => result({ final: null, error: 'usage limit reached', usage: null }));
   const r = await runReady({ db, adapters: { codex }, cwd: '.' });
   assert.equal(getTask(db, t.id).status, 'blocked');
   assert.ok(getTask(db, t.id).retry_at > Date.now());
   assert.equal(r.blocked, 1);
+  assert.equal(db.prepare('SELECT count(*) n FROM usage').get().n, 0);
   db.close();
 });
 
