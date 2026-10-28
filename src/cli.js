@@ -1,6 +1,6 @@
 // fa: feyzullah-agents komut satırı.
 import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { addComment, createGoal, decideApproval, getDocument, goalProgress, pendingApprovals, saveDocument } from './core/board.js';
 import { budgetStatus } from './core/costs.js';
@@ -14,6 +14,10 @@ import { createCliAdapter } from './engines/adapter.js';
 import { normalizeEngine } from './engines/args.js';
 import { findBins } from './engines/bins.js';
 import { openKnowledge } from './knowledge/noesis.js';
+import { activeAgents, loadAgents, missingSkills, orgChart, syncAgents } from './agents/registry.js';
+
+/** Paketle gelen uzmanlar; çalışma alanındaki .feyzullah-agents/agents aynı id'yi ezer. */
+const BUNDLED_AGENTS = join(import.meta.dirname, '..', 'agents');
 
 const USAGE = `Kullanım: fa <komut>
   init [--kind generic|roblox]                 çalışma alanını hazırlar
@@ -26,6 +30,7 @@ const USAGE = `Kullanım: fa <komut>
   comment <görev-id> "<metin>" [--file <f>] [--line <n>] [--wake]
   council "<soru>" [--context <metin>]         5 danışmanlı konsey kararı
   know "<metin>"                               Noesis'ten bu metne uygun bağlam
+  agents [--sync]                              uzman havuzu, org şeması, eksik skill'ler
   status                                       durum, son olaylar, bütçe
   bins                                         bulunan motorlar
   bench                                        1000 görevle hız ölçümü`;
@@ -85,11 +90,13 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
   let opened = null;
+  const agentDirs = [BUNDLED_AGENTS, join(dirname(path), 'agents')];
+  const sync = () => { const list = loadAgents(agentDirs); syncAgents(db, list); return list; };
   const knowledgeOf = () => {
     if (knowledgeIn !== undefined) return knowledgeIn;
     if (opened === null) opened = openKnowledge(db) ?? false;
@@ -103,7 +110,8 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       const kind = one('kind') ?? 'generic';
       if (!KINDS.has(kind)) throw new UsageError(`bilinmeyen tür: ${kind}`);
       db.prepare("UPDATE workspaces SET root = ?, kind = ? WHERE id = 'default'").run(resolve(cwd), kind);
-      say(`hazır: ${path} (${kind})`);
+      const n = sync().length;
+      say(`hazır: ${path} (${kind}), ${n} uzman`);
       return 0;
     }
     if (cmd === 'add') {
@@ -152,9 +160,10 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
         context = c.text;
         if (c.pages.length) say(`Noesis: ${c.pages.length} not bağlama eklendi${c.warnings.length ? `, ${c.warnings.length} uyarılı (${c.warnings.map((w) => w.title).join('; ')})` : ''}`);
       }
-      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), knowledge: context, requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
+      if (!activeAgents(db).length) sync();
+      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), agents: activeAgents(db), knowledge: context, requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
       say(`hedef ${goal.id}\n${p.reply}`);
-      for (const r of db.prepare('SELECT id, title, engine FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(goal.id)) say(`  ${r.id.slice(0, 8)} [${r.engine}] ${r.title}`);
+      for (const r of db.prepare('SELECT id, title, engine, assignee_agent_id a FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(goal.id)) say(`  ${r.id.slice(0, 8)} [${r.engine}${r.a ? `, ${r.a}` : ''}] ${r.title}`);
       if (p.approvalId) { say(`plan onay bekliyor: fa approve ${p.approvalId}`); return 0; }
       if (!opt['plan-only']) await driveAll(ad, { goalId: goal.id });
       return 0;
@@ -184,6 +193,16 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       addComment(db, { entity: 'task', entityId: taskId, author: 'kullanıcı', body: pos.slice(1).join(' '), anchor });
       if (opt.wake) wakeWithComment(db, taskId);
       say(`yorum eklendi${opt.wake ? ', görev yeniden kuyrukta' : ''}`);
+      return 0;
+    }
+    if (cmd === 'agents') {
+      const { opt } = parseArgs(rest, new Set(['sync']));
+      if (opt.sync || !activeAgents(db).length) say(`eşitlendi: ${sync().length} uzman`);
+      say(orgChart(db));
+      for (const a of activeAgents(db)) {
+        const miss = missingSkills(a);
+        if (miss.length) say(`uyarı: ${a.id} için skill bulunamadı: ${miss.join(', ')}`);
+      }
       return 0;
     }
     if (cmd === 'know') {

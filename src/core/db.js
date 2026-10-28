@@ -92,6 +92,14 @@ const MIGRATIONS = [
   CREATE VIRTUAL TABLE knowledge_fts USING fts5(page_id UNINDEXED, title, body, tokenize = 'unicode61 remove_diacritics 2');
   CREATE TABLE knowledge_queries (query TEXT PRIMARY KEY, source TEXT NOT NULL, results TEXT NOT NULL, fetched_at INTEGER NOT NULL);
   `,
+  // 4: uzman havuzu (rol, skill'ler, yönlendirme sözcükleri, kaynak dosya)
+  `
+  ALTER TABLE agents ADD COLUMN role TEXT;
+  ALTER TABLE agents ADD COLUMN skills TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE agents ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE agents ADD COLUMN file TEXT;
+  ALTER TABLE agents ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

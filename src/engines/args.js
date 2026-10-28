@@ -17,21 +17,22 @@ export const withPersona = (persona, prompt) => (persona ? `${persona}\n\n---\n\
 
 /**
  * @param {'claude'|'codex'|'antigravity'} engine
- * @param {{cwd: string, persona?: string|null, personaFile?: string|null, prompt: string, resumeId?: string|null, allowedTools?: string[], network?: boolean}} o
+ * @param {{cwd: string, persona?: string|null, personaFile?: string|null, prompt: string, resumeId?: string|null, allowedTools?: string[], network?: boolean, model?: string|null}} o
+ *   model: ajan başına model (Ofis'te yoktu; verilmezse argümanlar Ofis ile birebir).
  * @returns {string[]}
  */
-export function cliArgs(engine, { cwd, persona = null, personaFile = null, prompt, resumeId = null, allowedTools = [], network = false }) {
+export function cliArgs(engine, { cwd, persona = null, personaFile = null, prompt, resumeId = null, allowedTools = [], network = false, model = null }) {
   if (engine === 'codex') {
     // network: kum havuzu içinde ağ erişimi (npm install vb.); dosya yazma yine yalnız çalışma klasörü.
     return ['exec', '--json', '-s', 'workspace-write', ...(network ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
-      '--skip-git-repo-check', '-C', cwd, ...(resumeId ? ['resume', resumeId] : []), '-'];
+      '--skip-git-repo-check', ...(model ? ['-m', model] : []), '-C', cwd, ...(resumeId ? ['resume', resumeId] : []), '-'];
   }
   if (engine === 'antigravity') {
     // --mode accept-edits: -p kipinde izin sorulamaz; bayrak yoksa agy dosya yazamaz ve boş cevapla "SUCCESS" döner.
     return ['-p', resumeId ? prompt : withPersona(persona, prompt), '--output-format', 'stream-json', '--sandbox', '--mode', 'accept-edits',
-      ...(resumeId ? ['--conversation', resumeId] : [])];
+      ...(model ? ['--model', model] : []), ...(resumeId ? ['--conversation', resumeId] : [])];
   }
-  return ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
+  return ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(model ? ['--model', model] : []),
     ...(persona ? ['--append-system-prompt', persona] : personaFile ? ['--append-system-prompt-file', personaFile] : []),
     ...(resumeId ? ['--resume', resumeId] : []),
     ...(allowedTools.length ? ['--allowedTools', ...allowedTools] : [])];
