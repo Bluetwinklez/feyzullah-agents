@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDb, tx, schemaVersion } from '../../src/core/db.js';
+import { openDb, tx, schemaVersion, SCHEMA_VERSION } from '../../src/core/db.js';
 
-const TABLES = ['workspaces', 'agents', 'tasks', 'task_deps', 'runs', 'task_sessions', 'events', 'usage', 'budgets', 'meta'];
+const TABLES = ['goals', 'comments', 'documents', 'approvals', 'workspaces', 'agents', 'tasks', 'task_deps', 'runs', 'task_sessions', 'events', 'usage', 'budgets', 'meta'];
 
-test('şema kurulur ve sürüm 1', () => {
+test('şema kurulur ve son sürümde', () => {
   const db = openDb();
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name);
   for (const t of TABLES) assert.ok(names.includes(t), t);
-  assert.equal(schemaVersion(db), 1);
+  assert.equal(schemaVersion(db), SCHEMA_VERSION);
   assert.equal(db.prepare("SELECT kind FROM workspaces WHERE id='default'").get().kind, 'generic');
   db.close();
 });
@@ -25,7 +25,7 @@ test('dosya veritabanı WAL ve busy_timeout 5000, ikinci açılış göç tekrar
     assert.equal(a.prepare('PRAGMA busy_timeout').get().timeout, 5000);
     a.close();
     const b = openDb(path);
-    assert.equal(schemaVersion(b), 1);
+    assert.equal(schemaVersion(b), SCHEMA_VERSION);
     assert.equal(b.prepare("SELECT count(*) n FROM workspaces").get().n, 1);
     b.close();
   } finally {

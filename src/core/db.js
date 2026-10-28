@@ -58,7 +58,35 @@ const MIGRATIONS = [
   CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
   INSERT INTO workspaces(id, name, root, kind, created_at) VALUES ('default', 'default', NULL, 'generic', 0);
   `,
+  // 2: yönetici ve pano (hedefler, yorumlar, belgeler, onaylar, inceleme turları)
+  `
+  CREATE TABLE goals (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), title TEXT NOT NULL, description TEXT,
+    status TEXT NOT NULL, checks TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, entity_id TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL,
+    anchor TEXT, at INTEGER NOT NULL
+  );
+  CREATE INDEX comments_entity ON comments(entity, entity_id);
+  CREATE TABLE documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, entity_id TEXT NOT NULL, name TEXT NOT NULL, body TEXT NOT NULL,
+    version INTEGER NOT NULL, author TEXT, at INTEGER NOT NULL, UNIQUE (entity, entity_id, name, version)
+  );
+  CREATE TABLE approvals (
+    id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT, entity_id TEXT, payload TEXT,
+    status TEXT NOT NULL CHECK (status IN ('pending','approved','rejected')), requested_at INTEGER NOT NULL,
+    decided_at INTEGER, decided_by TEXT, note TEXT
+  );
+  ALTER TABLE tasks ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE tasks ADD COLUMN review_round INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE tasks ADD COLUMN checks TEXT;
+  ALTER TABLE tasks ADD COLUMN plan_key TEXT;
+  CREATE INDEX tasks_goal ON tasks(goal_id);
+  `,
 ];
+
+export const SCHEMA_VERSION = MIGRATIONS.length;
 
 /**
  * İşlem: BEGIN IMMEDIATE (yazma kilidi baştan alınır), hata olursa ROLLBACK ve hata yeniden atılır.

@@ -13,7 +13,7 @@ export function pidAlive(pid) {
 
 /** Run durumu → görev durumu. */
 const TASK_STATUS_FOR = { succeeded: 'done', limited: 'blocked', failed: 'failed', timed_out: 'failed', interrupted: 'todo', cancelled: 'cancelled' };
-const EVENT_FOR = { done: 'task.done', blocked: 'task.blocked', failed: 'task.failed', cancelled: 'task.cancelled', todo: 'task.requeued' };
+const EVENT_FOR = { done: 'task.done', in_review: 'task.in_review', blocked: 'task.blocked', failed: 'task.failed', cancelled: 'task.cancelled', todo: 'task.requeued' };
 
 /** @param {Db} db @param {string} id */
 export function getTask(db, id) {
@@ -22,14 +22,19 @@ export function getTask(db, id) {
 
 /**
  * @param {Db} db
- * @param {{title: string, prompt?: string, engine?: string, assigneeAgentId?: string, parentId?: string, goalId?: string, workspaceId?: string, status?: string}} t
+ * @param {{title: string, prompt?: string, engine?: string, assigneeAgentId?: string, parentId?: string, goalId?: string, workspaceId?: string, status?: string,
+ *   needsReview?: boolean, checks?: string[]|null, planKey?: string|null}} t
+ *   needsReview: başarılı run görevi done yerine in_review yapar; kontrolcü karar verince done olur.
  */
-export function createTask(db, { title, prompt = null, engine = null, assigneeAgentId = null, parentId = null, goalId = null, workspaceId = 'default', status = 'todo' }) {
+export function createTask(db, { title, prompt = null, engine = null, assigneeAgentId = null, parentId = null, goalId = null, workspaceId = 'default', status = 'todo',
+  needsReview = false, checks = null, planKey = null }) {
   const id = randomUUID();
   const at = now();
   tx(db, () => {
-    db.prepare(`INSERT INTO tasks(id, workspace_id, title, prompt, status, engine, assignee_agent_id, parent_id, goal_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, workspaceId, title, prompt, status, engine, assigneeAgentId, parentId, goalId, at, at);
+    db.prepare(`INSERT INTO tasks(id, workspace_id, title, prompt, status, engine, assignee_agent_id, parent_id, goal_id, created_at, updated_at,
+      needs_review, checks, plan_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, workspaceId, title, prompt, status, engine, assigneeAgentId, parentId, goalId, at, at, needsReview ? 1 : 0,
+        checks?.length ? JSON.stringify(checks) : null, planKey);
     append(db, { actor: 'core', type: 'task.created', entity: 'task', entityId: id, data: { title, engine } });
   });
   return getTask(db, id);
@@ -99,8 +104,9 @@ export function finishRun(db, runId, { status, exitCode = null, signal = null, e
     if (run.status !== 'running') return;
     db.prepare(`UPDATE runs SET status = ?, exit_code = ?, signal = ?, error = ?, error_code = ?, session_after = ?, usage = ?, stdout_excerpt = ?, finished_at = ?
       WHERE id = ?`).run(status, exitCode, signal, error, errorCode, sessionAfter, usage ? JSON.stringify(usage) : null, stdoutExcerpt, at, runId);
-    const taskStatus = TASK_STATUS_FOR[status];
+    let taskStatus = TASK_STATUS_FOR[status];
     if (!taskStatus) throw new Error(`bilinmeyen run durumu: ${status}`);
+    if (taskStatus === 'done' && db.prepare('SELECT needs_review FROM tasks WHERE id = ?').get(run.task_id)?.needs_review) taskStatus = 'in_review';
     const t = db.prepare(`UPDATE tasks SET status = ?, checkout_run_id = NULL, locked_at = NULL, retry_at = ?, updated_at = ?,
       result = COALESCE(?, result) WHERE id = ? AND checkout_run_id = ?`)
       .run(taskStatus, status === 'limited' ? retryAt : null, at, result == null ? null : JSON.stringify(result), run.task_id, runId);
@@ -137,6 +143,32 @@ export function recoverStale(db, { isAlive = pidAlive } = {}) {
       append(db, { actor: 'core', type: 'run.recovered', entity: 'run', entityId: r.id, data: { taskId: r.task_id } });
     }
     return stale.length;
+  });
+}
+
+/**
+ * İncelemede ya da bitmiş görevi düzeltme için yeniden kuyruğa alır. Oturum görev başına olduğu için
+ * düzeltme turu aynı motor oturumunda sürer.
+ * @param {Db} db @param {string} taskId @param {{prompt: string, engine?: string|null, reason?: string}} o
+ */
+export function reopenTask(db, taskId, { prompt, engine = undefined, reason = null }) {
+  tx(db, () => {
+    const r = db.prepare(`UPDATE tasks SET status = 'todo', prompt = ?, engine = COALESCE(?, engine), review_round = review_round + 1, updated_at = ?
+      WHERE id = ? AND status IN ('in_review', 'done', 'failed') AND checkout_run_id IS NULL`).run(prompt, engine ?? null, now(), taskId);
+    if (r.changes !== 1) throw new Error(`görev yeniden açılamaz: ${taskId}`);
+    append(db, { actor: 'core', type: 'task.reopened', entity: 'task', entityId: taskId, data: { reason } });
+  });
+}
+
+/**
+ * İncelemedeki görevi kapatır (kontrolcü kararı).
+ * @param {Db} db @param {string} taskId @param {{verdict: 'pass'|'needs_work', feedback?: string|null}} o
+ */
+export function closeReview(db, taskId, { verdict, feedback = null }) {
+  tx(db, () => {
+    const r = db.prepare(`UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ? AND status = 'in_review'`).run(now(), taskId);
+    if (r.changes !== 1) throw new Error(`incelemede değil: ${taskId}`);
+    append(db, { actor: 'reviewer', type: 'task.done', entity: 'task', entityId: taskId, data: { verdict, feedback: feedback?.slice(0, 2000) ?? null } });
   });
 }
 
