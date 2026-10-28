@@ -1,0 +1,13 @@
+{
+  "_aciklama": "Örnek ayar dosyası. Gerçek ayarlar ~/.feyzullah-agents/ayarlar.json içinde durur ve repoya girmez. Anahtar ya da jeton bu dosyaya yazılmaz.",
+  "motorlar": {
+    "beyin": "claude",
+    "kod": "codex",
+    "arastirma": "antigravity",
+    "yedekSirasi": ["codex", "antigravity", "claude"]
+  },
+  "kontrol": { "enFazlaTur": 2 },
+  "sinirlar": { "enFazlaGorev": 8, "enFazlaIseAlma": 5, "gorevZamanAsimiDk": 120 },
+  "noesis": { "mcpKomutu": "noesis.exe --mcp", "geriYaz": true },
+  "calismaAlani": "~/.feyzullah-agents/work"
+}

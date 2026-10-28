@@ -1,16 +1,23 @@
 # feyzullah-agents
 
-Çok ajanlı (multi-agent) yapay zekâ çalışma ortamı. [feyzullah-office](https://github.com/Bluetwinklez/feyzullah-office) temel alınarak geliştirilir.
+Genel amaçlı, çok ajanlı (multi-agent) yapay zekâ çalışma ortamı. Kod, araştırma, tasarım, oyun, içerik, veri ve ters mühendislik işlerini bir ajan ekibine dağıtır. [feyzullah-office](https://github.com/Bluetwinklez/feyzullah-office) temel alınarak geliştirilir.
 
-## Hedef
+## Nasıl çalışacak
 
-- **Beyin:** Claude, planlama, mimari, güvenlik ve sonuç kontrolü yapar.
-- **İş yükü:** Codex (kod, test, build) ve Antigravity/agy (belge, araştırma) üstlenir.
-- **Bilgi:** Noesis arşivi (araçlar, repolar, kararlar) ajanlara bağlam olarak verilir.
+1. Tek bir komut verirsin.
+2. **Prompt Master** komutu netleştirir.
+3. **Yönetici (Claude)** Noesis bilgi arşivinden bağlam çeker, işi parçalar ve uzmanlara dağıtır.
+4. Uzmanlar paralel çalışır. Kod, test ve build işleri **Codex**'te, belge ve araştırma işleri **agy**'de.
+5. **Kontrolcü** her işi kanıta bakarak denetler. Sonuç raporlanır, kalıcı bilgi arşive yazılır.
 
 ## Durum
 
-Başlangıç aşaması. Mimari ve yol haritası hazırlanıyor.
+**Aşama 0: plan ve ortam.** Henüz çalışan kod yok.
+
+- [Plan ve aşamalar](docs/PLAN.md)
+- [Veri kaynakları](docs/KAYNAKLAR.md)
+- [Kararlar](docs/KARARLAR.md)
+- Ajan kuralları: [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)
 
 ## Lisans
 
