@@ -37,3 +37,32 @@ Yıldız sayıları ve lisanslar GitHub'dan bu tarihte okundu. Kod kopyalamadan 
 2. **Diff üzerinde satır içi geri bildirim** (vibe-kanban) aşama 6 arayüzüne eklenecek.
 3. **Motor bağdaştırıcısı arayüzü** (pixel-agents `HookProvider`, Paperclip adaptörleri) aşama 1'de `engines/` için örnek alınacak: yeni CLI eklemek tek dosya olmalı.
 4. **Hafıza:** hindsight ve codebase-memory-mcp aşama 3'ten önce denenecek.
+
+## Ek tarama (28 Ekim 2026)
+
+Kaynaklar: GitHub araması ve [Augment'in açık kaynak orkestratör karşılaştırması](https://www.augmentcode.com/tools/open-source-agent-orchestrators). Makale araçları dört ölçütle karşılaştırıyor: yalıtım, ajan desteği, koordinasyon derinliği ve arayüz. Ortak görüş: yalıtım için git worktree kullanılıyor, araçları asıl ayıran şey koordinasyon.
+
+| Repo | ★ | Lisans | Alınacak |
+|---|---|---|---|
+| [sipyourdrink-ltd/bernstein](https://github.com/sipyourdrink-ltd/bernstein) | – | Apache-2.0 | Görev grafiğini LLM planlar. Sıralama ve dağıtım deterministik, LLM token'ı harcamaz. Birleştirmeden önce "Janitor" lint, tip ve test kontrolü yapar. Olay kaydı HMAC zincirli. **A1 zamanlayıcı ve A5 kapı için ana örnek** |
+| [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator) (yeni adı Untrivial-ai) | 13.8k | Apache-2.0 | issue → worktree → ajan → PR yaşam döngüsü, ayrı inceleyici ajan, CI hatasını kendi düzeltme. Makaledeki ders: ajanlar onay beklerken 90 saniyeden fazla boşta kaldı. Bu yüzden onay bekleyen iş kuyruğu bloklamamalı |
+| [generalaction/emdash](https://github.com/generalaction/emdash) | – | Apache-2.0 | Worktree başına `setup/run/teardown` betikleri ve port enjeksiyonu (`$EMDASH_PORT`), böylece paralel işler port çakıştırmaz. Bilet sistemlerinden iş alma |
+| [microsoft/conductor](https://github.com/microsoft/conductor) | – | MIT | YAML ile tanımlı iş akışları: paralel gruplar, alt akışlar, koşullu dallanma. A2 hedef şablonları için örnek |
+| [mraza007/baton](https://github.com/mraza007/baton) | – | MIT | Poller, Dispatcher ve Reconciler ayrımı, tek `WORKFLOW.md` dosyası. A7 iş kuyruğu için örnek |
+| [kbwo/ccmanager](https://github.com/kbwo/ccmanager) | 1.3k | MIT | CLI çıktısından durum algılama (boşta / meşgul / girdi bekliyor), worktree oluşturma, birleştirme ve silme |
+| [ryoppippi/ccusage](https://github.com/ryoppippi/ccusage) | 19.2k | MIT (doğrulanacak) | Claude Code ve Codex JSONL loglarından token ve maliyet. `--json` çıktısı A5'te çapraz kontrol için kullanılır |
+| [promptfoo/promptfoo](https://github.com/promptfoo/promptfoo) | 26.5k | MIT | Ajan değerlendirmesi: YAML testleri, LLM hakem. A4'te skill ve ajan testleri için |
+| [harbor-framework/harbor](https://github.com/harbor-framework/harbor) | 6.6k | Apache-2.0 | Görev biçimi: talimat + ortam + doğrulayıcı betik. `fa bench` görev seti bu biçimde yazılır |
+| [openworkflowdev/openworkflow](https://github.com/openworkflowdev/openworkflow) | 1.3k | Apache-2.0 | Kalıcı adım ve tekrar oynatma semantiği. Kod alınmaz, zamanlayıcıya fikir olarak |
+| [musistudio/claude-code-router](https://github.com/musistudio/claude-code-router) | 37.9k | MIT | Görev türüne göre model yönlendirme tablosu. Proxy trafiği gördüğü için kurulmaz, yalnız fikir |
+
+Yalnız fikir alınacaklar:
+- preset-io/agor (BSL 1.1): Tuval arayüzü.
+- appsoftwareltd/vscode-agent-kanban (ELv2): Her turda bağlamın `AGENTS.md` dosyasıyla yeniden verilmesi.
+- S4US/Roqer (AGPL).
+
+Kullanılmayacaklar:
+- stravu/crystal: Şubat 2026'da bırakıldı.
+- vibe-kanban: Şirket kapattı, topluluk sürdürüyor.
+
+Roblox araçları: [`ROBLOX.md`](ROBLOX.md).

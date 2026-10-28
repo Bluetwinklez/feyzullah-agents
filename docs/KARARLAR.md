@@ -14,3 +14,9 @@
 | 2026-10-28 | Ajanlar 5 departmana ayrılacak: Build, Design, Grow, Make, Run | Charlie Hills gönderisi, Noesis'te arşivli |
 | 2026-10-28 | Önemli kararlarda "konsey kipi": 5 danışman, isimsiz çapraz inceleme, Claude başkan | LLM Council gönderisi. Kaynak repolarda lisans yok, kod kendimiz yazılacak |
 | 2026-10-28 | Bütçe birimi token. Ücret yerine token sayılıyor | Abonelik CLI'larında ücret çoğu zaman 0 görünüyor |
+| 2026-10-28 | Motor kimliği `antigravity`, `agy` yalnız takma ad. CLI argümanları Ofis `cli.js` ile birebir | İnceleme: plandaki bayraklar eksikti (codex `-s -C --skip-git-repo-check`, claude `--permission-mode acceptEdits`) |
+| 2026-10-28 | "Sıcak oturum havuzu" yerine görev başına oturum | `--resume` süreci sıcak tutmuyor, bağlamı büyütüyor |
+| 2026-10-28 | Limite takılan görev `blocked` + `retry_at`; yedek motor A1'de | Limit `failed` olunca bağımlı görevler sonsuza dek kilitleniyordu |
+| 2026-10-28 | Koordinasyon deterministik, LLM yalnız plan ve incelemede | Bernstein yaklaşımı, token ve gecikme kazancı |
+| 2026-10-28 | Roblox ilk alan paketi (`ROBLOX.md`). sokak-oyunu durdurulmuş durumuyla içe aktarılır | Kullanıcı isteği |
+| 2026-10-28 | Roblox Open Cloud anahtarı yalnız test place'i için, en az izinli. Yayın her seferinde onaylı | Güvenlik |
