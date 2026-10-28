@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { openDb } from '../../src/core/db.js';
 import { since } from '../../src/core/events.js';
@@ -92,15 +93,40 @@ test('blockTask claim edilmemiş görevi bekletir', () => {
   db.close();
 });
 
+const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid;
+
 test('recoverStale takılı run\'ı interrupted, görevi todo yapar', () => {
   const db = openDb();
   const t = createTask(db, { title: 'a' });
-  const run = claimTask(db, t.id, { engine: 'codex' });
+  const run = claimTask(db, t.id, { engine: 'codex', ownerPid: deadPid() });
   assert.equal(recoverStale(db), 1);
   assert.equal(db.prepare('SELECT status FROM runs WHERE id = ?').get(run.id).status, 'interrupted');
   assert.equal(getTask(db, t.id).status, 'todo');
   assert.equal(getTask(db, t.id).checkout_run_id, null);
   assert.equal(recoverStale(db), 0);
+  db.close();
+});
+
+test('recoverStale canlı sürecin run\'ına dokunmaz', () => {
+  const db = openDb();
+  const t = createTask(db, { title: 'a' });
+  claimTask(db, t.id, { engine: 'codex' });
+  assert.equal(recoverStale(db), 0);
+  assert.equal(getTask(db, t.id).status, 'in_progress');
+  db.close();
+});
+
+test('kurtarılmış run sonradan bitince görevi ve olayları bozmaz', () => {
+  const db = openDb();
+  const t = createTask(db, { title: 'a' });
+  const run = claimTask(db, t.id, { engine: 'codex' });
+  recoverStale(db, { isAlive: () => false });
+  const run2 = claimTask(db, t.id, { engine: 'codex' });
+  finishRun(db, run.id, { status: 'failed', error: 'eski' });
+  assert.equal(getTask(db, t.id).status, 'in_progress');
+  assert.equal(getTask(db, t.id).checkout_run_id, run2.id);
+  assert.equal(db.prepare('SELECT status FROM runs WHERE id = ?').get(run.id).status, 'interrupted');
+  assert.ok(!since(db, 0).some((e) => e.type === 'task.failed'));
   db.close();
 });
 

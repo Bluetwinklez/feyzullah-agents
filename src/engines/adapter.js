@@ -93,7 +93,10 @@ export function createCliAdapter(engine, { bin, timeoutMs = 60 * 60_000, spawnIm
         resolve({ text: (final ?? streamed).trim(), final, sessionId, usage, rate, error, exitCode, timedOut, stderr: stderr.trim() });
       };
       child.on('error', (err) => { error = `başlatılamadı: ${err.message}`; finish(null); });
-      child.on('close', (code) => { handle(buf + dec.end()); buf = ''; finish(code); });
+      const drain = (code) => { if (settled) return; handle(buf + dec.end()); buf = ''; finish(code); };
+      child.on('close', drain);
+      // Arka planda kalan torun süreç stdout'u açık tutarsa close gelmez: exit'ten sonra kısa bekleyip bitir.
+      child.on('exit', (code) => setTimeout(() => drain(code), 2000));
     });
   }
 

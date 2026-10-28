@@ -75,6 +75,44 @@ test('limitte görev yedek motora geçer', async () => {
   db.close();
 });
 
+test('yedek motor paralellik sınırına uyar', async () => {
+  const db = openDb();
+  for (const x of ['a', 'b', 'c']) createTask(db, { title: x, engine: 'codex' });
+  const codex = fakeAdapter('codex', () => result({ final: null, error: 'usage limit reached', usage: null }), 20);
+  const claude = fakeAdapter('claude', () => result(), 20);
+  const r = await runReady({ db, adapters: { codex, claude }, maxParallel: { codex: 3, claude: 1 }, cwd: '.' });
+  assert.equal(claude.peak, 1);
+  assert.equal(r.done, 3);
+  db.close();
+});
+
+test('yedek motora geçerken bütçe kontrol edilir', async (t) => {
+  const AT = new Date(2026, 9, 28, 12).getTime();
+  setClock(() => AT); t.after(() => setClock());
+  const db = openDb();
+  setBudget(db, { id: 'cl', scope: 'engine', scopeId: 'claude', window: 'day', limitTokens: 10 });
+  recordUsage(db, { engine: 'claude', usage: { input: 10, cachedInput: 0, cacheWrite: 0, output: 0, known: true } });
+  const task = createTask(db, { title: 'a', engine: 'codex' });
+  const codex = fakeAdapter('codex', () => result({ final: null, error: 'usage limit reached', usage: null }));
+  const claude = fakeAdapter('claude');
+  const r = await runReady({ db, adapters: { codex, claude }, cwd: '.' });
+  assert.equal(claude.calls.length, 0);
+  assert.equal(getTask(db, task.id).status, 'blocked');
+  assert.equal(r.skippedBudget, 1);
+  db.close();
+});
+
+test('iptal edilen görev failed olmaz, todo\'ya döner', async () => {
+  const db = openDb();
+  const task = createTask(db, { title: 'a', engine: 'codex' });
+  const ctrl = new AbortController();
+  const codex = fakeAdapter('codex', () => { ctrl.abort(); return result({ final: null, error: 'durduruldu', exitCode: 1 }); });
+  await runReady({ db, adapters: { codex }, cwd: '.', signal: ctrl.signal });
+  assert.equal(getTask(db, task.id).status, 'todo');
+  assert.equal(db.prepare('SELECT status FROM runs').get().status, 'interrupted');
+  db.close();
+});
+
 test('yedek yoksa blocked ve retry_at dolu', async () => {
   const db = openDb();
   const t = createTask(db, { title: 'a', engine: 'codex' });

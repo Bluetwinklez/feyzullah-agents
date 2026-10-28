@@ -69,7 +69,8 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
     if (res.sessionId) saveSession(db, key, res.sessionId);
     const lim = res.timedOut || (!res.error && res.final != null) ? { limited: false, retryAt: null }
       : detectLimit({ error: res.error, rate: res.rate, text: res.final == null ? res.stderr : null });
-    const status = res.timedOut ? 'timed_out' : !res.error && res.final != null ? 'succeeded' : lim.limited ? 'limited' : 'failed';
+    // Kullanıcı iptali (Ctrl+C) görevi bozmaz: run interrupted, görev todo'ya döner.
+    const status = signal?.aborted ? 'interrupted' : res.timedOut ? 'timed_out' : !res.error && res.final != null ? 'succeeded' : lim.limited ? 'limited' : 'failed';
     // Kullanım satırı gelmediyse kayıt yok; "bilinmeyen kullanım" yalnız kullanım vermeyen motorların (agy) başarılı işlerini sayar.
     if (res.usage) recordUsage(db, { runId: run.id, agentId: task.assignee_agent_id, engine, model: agent?.model ?? null, usage: res.usage });
     finishRun(db, run.id, {
@@ -80,20 +81,22 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
     return { status, retryAt: lim.retryAt };
   }
 
-  async function work(task, chain) {
-    for (const engine of chain) {
-      if (isDown(engine)) continue;
-      running[engine] = (running[engine] ?? 0) + 1;
-      let r;
-      try { r = await attempt(task, engine); } finally { running[engine]--; }
-      if (r.status === 'lost') return;
-      if (r.status !== 'limited') { outcome.set(task.id, r.status); return; }
-      down[engine] = r.retryAt;
-      saveDown(db, down);
-      append(db, { actor: 'scheduler', type: 'engine.down', entity: 'engine', entityId: engine, data: { until: r.retryAt } });
-      outcome.set(task.id, 'limited');
-      const next = chain.find((e) => !isDown(e));
-      if (next) append(db, { actor: 'scheduler', type: 'task.fallback', entity: 'task', entityId: task.id, data: { from: engine, to: next } });
+  /** Tek deneme. Limitte motor kapanır; yedek motor varsa görev hemen yeniden hazır olur ve dış döngü
+   *  onu kapasite ve bütçe kontrolünden geçirerek yedek motora verir. */
+  async function work(task, engine, chain) {
+    running[engine] = (running[engine] ?? 0) + 1;
+    let r;
+    try { r = await attempt(task, engine); } finally { running[engine]--; }
+    if (r.status === 'lost') return;
+    outcome.set(task.id, r.status);
+    if (r.status !== 'limited') return;
+    down[engine] = r.retryAt;
+    saveDown(db, down);
+    append(db, { actor: 'scheduler', type: 'engine.down', entity: 'engine', entityId: engine, data: { until: r.retryAt } });
+    const next = chain.find((e) => !isDown(e));
+    if (next && !signal?.aborted) {
+      blockTask(db, task.id, { retryAt: now(), reason: `yedek motor: ${next}` });
+      append(db, { actor: 'scheduler', type: 'task.fallback', entity: 'task', entityId: task.id, data: { from: engine, to: next } });
     }
   }
 
@@ -121,7 +124,7 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
         continue;
       }
       // work, ilk await'e kadar senkron çalışır: claim ve sayaç artışı bu satır dönmeden yapılmış olur.
-      const p = work(task, usable).finally(() => active.delete(p));
+      const p = work(task, engine, chain).finally(() => active.delete(p));
       active.add(p);
       launched++;
     }
@@ -134,6 +137,7 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
   for (const s of outcome.values()) {
     if (s === 'succeeded') counts.done++;
     else if (s === 'limited') counts.blocked++;
+    else if (s === 'interrupted') continue;
     else counts.failed++;
   }
   return counts;

@@ -5,6 +5,12 @@ import { append } from './events.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 
+/** Süreç yaşıyor mu (sinyal 0 yalnız varlığı yoklar). */
+export function pidAlive(pid) {
+  if (!pid) return false;
+  try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
+}
+
 /** Run durumu → görev durumu. */
 const TASK_STATUS_FOR = { succeeded: 'done', limited: 'blocked', failed: 'failed', timed_out: 'failed', interrupted: 'todo', cancelled: 'cancelled' };
 const EVENT_FOR = { done: 'task.done', blocked: 'task.blocked', failed: 'task.failed', cancelled: 'task.cancelled', todo: 'task.requeued' };
@@ -61,17 +67,18 @@ export function readyTasks(db, { limit = 50, at = now() } = {}) {
 /**
  * Görevi tek işlemde alır: önce checkout, kazanılırsa run satırı. Kaybedilirse null döner, run oluşmaz.
  * @param {Db} db @param {string} taskId
- * @param {{engine: string, sessionBefore?: string|null}} o
+ * @param {{engine: string, sessionBefore?: string|null, ownerPid?: number}} o
+ *   ownerPid: run'ı yürüten fa sürecinin pid'i (runs.pid); kurtarma canlı sahibin run'ına dokunmaz.
  */
-export function claimTask(db, taskId, { engine, sessionBefore = null }) {
+export function claimTask(db, taskId, { engine, sessionBefore = null, ownerPid = process.pid }) {
   const runId = randomUUID();
   const at = now();
   return tx(db, () => {
     const r = db.prepare(`UPDATE tasks SET checkout_run_id = ?, locked_at = ?, status = 'in_progress', attempts = attempts + 1, updated_at = ?
       WHERE id = ? AND checkout_run_id IS NULL AND status IN ('todo', 'blocked')`).run(runId, at, at, taskId);
     if (r.changes !== 1) return null;
-    db.prepare(`INSERT INTO runs(id, task_id, engine, status, session_before, started_at, last_output_at) VALUES (?, ?, ?, 'running', ?, ?, ?)`)
-      .run(runId, taskId, engine, sessionBefore, at, at);
+    db.prepare(`INSERT INTO runs(id, task_id, engine, status, session_before, started_at, last_output_at, pid) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`)
+      .run(runId, taskId, engine, sessionBefore, at, at, ownerPid);
     append(db, { actor: 'core', type: 'task.claimed', entity: 'task', entityId: taskId, data: { runId, engine } });
     return db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
   });
@@ -79,6 +86,7 @@ export function claimTask(db, taskId, { engine, sessionBefore = null }) {
 
 /**
  * Run'ı kapatır, görev durumunu run durumuna göre değiştirir ve checkout'u boşaltır.
+ * Run artık "running" değilse (ör. kurtarılmış) hiçbir şey yapmaz.
  * @param {Db} db @param {string} runId
  * @param {{status: 'succeeded'|'failed'|'timed_out'|'cancelled'|'limited'|'interrupted', exitCode?: number|null, signal?: string|null, error?: string|null,
  *   errorCode?: string|null, sessionAfter?: string|null, usage?: object|null, result?: unknown, retryAt?: number|null, stdoutExcerpt?: string|null}} o
@@ -88,15 +96,16 @@ export function finishRun(db, runId, { status, exitCode = null, signal = null, e
   tx(db, () => {
     const run = db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
     if (!run) throw new Error(`run yok: ${runId}`);
+    if (run.status !== 'running') return;
     db.prepare(`UPDATE runs SET status = ?, exit_code = ?, signal = ?, error = ?, error_code = ?, session_after = ?, usage = ?, stdout_excerpt = ?, finished_at = ?
       WHERE id = ?`).run(status, exitCode, signal, error, errorCode, sessionAfter, usage ? JSON.stringify(usage) : null, stdoutExcerpt, at, runId);
     const taskStatus = TASK_STATUS_FOR[status];
     if (!taskStatus) throw new Error(`bilinmeyen run durumu: ${status}`);
-    db.prepare(`UPDATE tasks SET status = ?, checkout_run_id = NULL, locked_at = NULL, retry_at = ?, updated_at = ?,
+    const t = db.prepare(`UPDATE tasks SET status = ?, checkout_run_id = NULL, locked_at = NULL, retry_at = ?, updated_at = ?,
       result = COALESCE(?, result) WHERE id = ? AND checkout_run_id = ?`)
       .run(taskStatus, status === 'limited' ? retryAt : null, at, result == null ? null : JSON.stringify(result), run.task_id, runId);
     append(db, { actor: 'core', type: 'run.finished', entity: 'run', entityId: runId, data: { status, exitCode, error } });
-    append(db, { actor: 'core', type: EVENT_FOR[taskStatus], entity: 'task', entityId: run.task_id, data: { runId, retryAt } });
+    if (t.changes === 1) append(db, { actor: 'core', type: EVENT_FOR[taskStatus], entity: 'task', entityId: run.task_id, data: { runId, retryAt } });
   });
 }
 
@@ -112,13 +121,15 @@ export function blockTask(db, taskId, { retryAt, reason = null }) {
 }
 
 /**
- * Önceki süreçten "running" kalan run'ları interrupted yapar, görevlerini todo'ya döndürür. Açılışta bir kez çağrılır.
+ * Sahibi ölmüş süreçten "running" kalan run'ları interrupted yapar, görevlerini todo'ya döndürür.
+ * Başka bir canlı `fa run` sürecinin run'larına dokunmaz.
  * @param {Db} db
+ * @param {{isAlive?: (pid: number|null) => boolean}} [o]
  * @returns {number} kurtarılan run sayısı
  */
-export function recoverStale(db) {
+export function recoverStale(db, { isAlive = pidAlive } = {}) {
   return tx(db, () => {
-    const stale = db.prepare("SELECT id, task_id FROM runs WHERE status = 'running'").all();
+    const stale = db.prepare("SELECT id, task_id, pid FROM runs WHERE status = 'running'").all().filter((r) => !isAlive(r.pid));
     const at = now();
     for (const r of stale) {
       db.prepare("UPDATE runs SET status = 'interrupted', finished_at = ?, error = 'süreç yarıda kaldı' WHERE id = ?").run(at, r.id);

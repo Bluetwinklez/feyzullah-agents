@@ -52,6 +52,10 @@ test('agy usage bilinmez', () => {
   assert.deepEqual(p.usage, { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, known: false });
 });
 
+test('codex error satırı (yeniden bağlanma) hata sayılmaz', () => {
+  assert.equal(parseLine('codex', JSON.stringify({ type: 'error', message: 'Reconnecting... 1/5' })), null);
+});
+
 test('bozuk satır null', () => {
   for (const e of ENGINES) {
     assert.equal(parseLine(e, 'x{'), null);

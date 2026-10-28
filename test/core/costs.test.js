@@ -5,6 +5,7 @@ import { recordUsage, setBudget, budgetStatus, windowRange } from '../../src/cor
 import { detectLimit, limitUntil } from '../../src/core/limits.js';
 
 const AT = new Date(2026, 9, 28, 12, 0, 0).getTime(); // yerel 28 Ekim 2026 12:00
+const RESET_S = Math.floor(AT / 1000) + 7200; // iki saat sonra, epoch saniye
 const u = (input, output, extra = {}) => ({ input, cachedInput: 0, cacheWrite: 0, output, known: true, ...extra });
 
 test('%80 uyarı, %100 durdurma', (t) => {
@@ -102,16 +103,21 @@ test('günlük bütçe resetAt ertesi gece yarısı', () => {
 test('detectLimit usage limit metnini yakalar', () => {
   const at = AT;
   assert.equal(detectLimit({ error: "You've hit your usage limit. Try again at 7:52 AM." }, at).limited, true);
-  assert.equal(detectLimit({ error: 'Claude AI usage limit reached|1761700000' }, at).retryAt, 1761700000 * 1000);
+  assert.equal(detectLimit({ error: `Claude AI usage limit reached|${RESET_S}` }, at).retryAt, RESET_S * 1000);
   assert.equal(detectLimit({ error: 'Quota exceeded for this project' }, at).retryAt, at + 60 * 60_000);
   assert.equal(detectLimit({ error: 'sözdizimi hatası' }, at).limited, false);
   assert.equal(detectLimit({}, at).limited, false);
 });
 
 test('rate resetsAt saatini kullanır, allowed olay limit değildir', () => {
-  assert.deepEqual(detectLimit({ rate: { status: 'rejected', resetsAt: 1761700000 } }, AT), { limited: true, retryAt: 1761700000 * 1000 });
-  assert.equal(detectLimit({ rate: { status: 'allowed', resetsAt: 1761700000 } }, AT).limited, false);
+  assert.deepEqual(detectLimit({ rate: { status: 'rejected', resetsAt: RESET_S } }, AT), { limited: true, retryAt: RESET_S * 1000 });
+  assert.equal(detectLimit({ rate: { status: 'allowed', resetsAt: RESET_S } }, AT).limited, false);
   assert.equal(detectLimit({ rate: { status: 'allowed_warning' } }, AT).limited, false);
+});
+
+test('geçmişteki sıfırlama saati en az 1 dakika sonraya çekilir', () => {
+  assert.equal(detectLimit({ rate: { status: 'rejected', resetsAt: 1000 } }, AT).retryAt, AT + 60_000);
+  assert.equal(detectLimit({ error: 'usage limit reached|1000000000' }, AT).retryAt, AT + 60_000);
 });
 
 test('try again at saati okunur, geçtiyse ertesi gün', () => {

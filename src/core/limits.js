@@ -25,7 +25,13 @@ export function limitUntil(msg, at = now()) {
  * @param {number} [at]
  * @returns {{limited: boolean, retryAt: number|null}}
  */
-export function detectLimit({ error = null, rate = null, text = null } = {}, at = now()) {
+export function detectLimit(input = {}, at = now()) {
+  const r = detect(input, at);
+  // Geçmişte kalan sıfırlama saati (saat kayması, eski mesaj) motoru hemen yeniden denetip döngü yapmasın.
+  return r.limited ? { limited: true, retryAt: Math.max(r.retryAt, at + 60_000) } : r;
+}
+
+function detect({ error = null, rate = null, text = null }, at) {
   // claude rate_limit_event her istekte gelir; yalnız "rejected" gerçek limittir.
   if (rate && rate.status === 'rejected') {
     const s = Number(rate.resetsAt);
