@@ -34,7 +34,8 @@ const RULES = [
   { kind: 'jwt', re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g },
   { kind: 'bearer jetonu', re: /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/g },
   { kind: 'parola/anahtar ataması', re: /\b(?:api[_-]?key|apikey|secret|token|password|passwd|parola|şifre)\s*[:=]\s*["']?[^\s"']{8,}/gi },
-  { kind: 'e-posta', re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, check: (m) => !/@(users\.noreply\.github\.com|example\.(com|org)|anthropic\.com)$/i.test(m) },
+  { kind: 'e-posta', re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, // Ayrılmış test alan adları (RFC 2606) kişisel veri değildir.
+    check: (m) => !/@(users\.noreply\.github\.com|example\.(com|org|net)|anthropic\.com)$|\.(invalid|test|example|localhost)$/i.test(m) },
   { kind: 'telefon', re: /(?:\+90[\s-]?|\b0)5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b/g },
   { kind: 'tc kimlik', re: /\b[1-9]\d{10}\b/g, check: tcValid },
   { kind: 'kart numarası', re: /\b(?:\d[ -]?){13,19}\b/g, check: (m) => { const d = m.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && luhn(d); } },
