@@ -11,6 +11,7 @@ import { detectLimit } from './limits.js';
 import { runReady } from './scheduler.js';
 import { addDependency, closeReview, createTask, getTask, reopenTask } from './tasks.js';
 import { lessonPrompt, parseLesson } from '../knowledge/noesis.js';
+import { pickAgent } from '../agents/registry.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 /** @typedef {(i: {prompt: string, persona?: string|null, engine?: string, cwd?: string}) => Promise<string>} Llm */
@@ -68,6 +69,10 @@ export async function planGoal({ db, goalId, llm, agents = [], knowledge = '', d
     if (!/SORUN YOK/i.test(findings)) plan = await ask(findings.slice(0, 4000));
   }
   const status = requireApproval ? 'backlog' : 'todo';
+  // Planlayıcı uzman seçmediyse havuzdan seçilir: departman iş metninden, motor plandaki motor.
+  for (const t of plan.tasks) {
+    if (!t.agent && agents.length) t.agent = pickAgent(db, { text: `${t.title}\n${t.prompt}`, engine: t.engine })?.id ?? null;
+  }
   const created = tx(db, () => {
     const byKey = new Map();
     for (const t of plan.tasks) {
