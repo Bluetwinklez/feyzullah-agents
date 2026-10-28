@@ -2,10 +2,12 @@
 // onaylanan kart bir kez kullanılır.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { requestApproval } from '../core/board.js';
+import { decideApproval, requestApproval } from '../core/board.js';
 import { now, tx } from '../core/db.js';
 import { append } from '../core/events.js';
+import { approvePlan } from '../core/orchestrator.js';
 import { decide } from '../core/policy.js';
+import { blockTask, getTask } from '../core/tasks.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 
@@ -51,6 +53,23 @@ export function deleteImpact(paths) {
   };
   for (const p of paths) walk(p);
   return { files, bytes };
+}
+
+/**
+ * Onay kartına karar verir ve eylemin yan etkisini uygular (plan onayı görevleri kuyruğa alır,
+ * kurtarma onayı takılan görevi yeniden dener). CLI ve Santral aynı yolu kullanır.
+ * @param {Db} db @param {string} ref kimlik ya da ön ek @param {{approve: boolean, by?: string, note?: string|null}} o
+ */
+export function resolveApproval(db, ref, { approve, by = 'kullanıcı', note = null }) {
+  const a = ref && db.prepare('SELECT * FROM approvals WHERE id = ? OR id LIKE ?').get(ref, `${ref}%`);
+  if (!a) throw new Error(`onay bulunamadı: ${ref ?? ''}`);
+  if (a.status !== 'pending') throw new Error(`onay zaten karara bağlandı: ${a.status}`);
+  if (a.action === 'plan.approve') approvePlan(db, a.entity_id, { approve, by });
+  else decideApproval(db, a.id, { approve, by, note });
+  if (a.action === 'task.recover' && approve && getTask(db, a.entity_id)?.status === 'blocked') {
+    blockTask(db, a.entity_id, { retryAt: now(), reason: 'kurtarma onaylandı' });
+  }
+  return a;
 }
 
 /** fs.delete için kapı; kartta silme etkisi yazar. @param {Db} db @param {string[]} paths */
