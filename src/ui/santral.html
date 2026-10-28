@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Santral</title>
+<style>
+/* Santral: tek dosya, harici kaynak yok. Veri /api'den, değişiklikler SSE ile gelir. */
+:root {
+  --paper: #f3efe6; --card: #fbf9f4; --ink: #15130f; --ink-2: #4b463d; --mute: #7d766a;
+  --rule: #ddd6c8; --rule-2: #e9e3d7;
+  --claude: #c9660a; --codex: #0e7d69; --agy: #c43d25; --noesis: #6b4fd3;
+  --ok: #2f8a3b; --warn: #b07c00; --bad: #c43d25;
+  --serif: 'Instrument Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --sans: 'Instrument Sans', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --lane: 52px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #12110e; --card: #1a1814; --ink: #f1ece2; --ink-2: #c4bcae; --mute: #948c7e; --rule: #2e2a24; --rule-2: #24211c;
+  --claude: #f29a3f; --codex: #36c2a6; --agy: #f06a4e; --noesis: #9f88ff; --ok: #6cc477; --warn: #e8b23a; --bad: #f06a4e; } }
+:root[data-theme="dark"] {
+  --paper: #12110e; --card: #1a1814; --ink: #f1ece2; --ink-2: #c4bcae; --mute: #948c7e; --rule: #2e2a24; --rule-2: #24211c;
+  --claude: #f29a3f; --codex: #36c2a6; --agy: #f06a4e; --noesis: #9f88ff; --ok: #6cc477; --warn: #e8b23a; --bad: #f06a4e; }
+
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--mute); }
+
+.top { display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: center; padding: 16px 28px; border-bottom: 1px solid var(--rule); }
+.mark { font: 34px/1 var(--serif); letter-spacing: -.01em; }
+.mark i { color: var(--claude); font-style: normal; }
+.palette { display: flex; align-items: center; gap: 12px; max-width: 720px; padding: 10px 14px; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; }
+.palette:focus-within { border-color: var(--ink-2); }
+.palette input { flex: 1; min-width: 0; border: 0; background: none; font-size: 15px; outline: none; }
+.palette kbd { font: 11px var(--mono); color: var(--mute); border: 1px solid var(--rule); border-radius: 5px; padding: 2px 6px; }
+.stats { display: flex; gap: 24px; }
+.stat b { display: block; font: 26px/1 var(--serif); }
+.stat span { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .08em; }
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--mute); display: inline-block; margin-right: 6px; }
+.live.on { background: var(--ok); }
+
+.main { display: grid; grid-template-columns: 1fr 380px; min-height: calc(100vh - 73px); }
+.left { min-width: 0; border-right: 1px solid var(--rule); }
+.goals { display: flex; gap: 8px; padding: 16px 28px 0; overflow-x: auto; scrollbar-width: thin; }
+.chip { white-space: nowrap; padding: 5px 11px; border: 1px solid var(--rule); border-radius: 99px; font-size: 12px; background: var(--card); }
+.chip.sel { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip i { font-style: normal; font-family: var(--mono); font-size: 11px; opacity: .7; margin-left: 4px; }
+.sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 18px 28px 12px; }
+.sec-h h2 { font: 28px/1.1 var(--serif); font-weight: 400; }
+.sec-h h2 em { color: var(--mute); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+
+.tl-wrap { overflow-x: auto; padding: 0 28px 8px; }
+.tl { position: relative; min-width: 760px; display: grid; grid-template-columns: 190px 1fr; }
+.axis { grid-column: 2; display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--mute); padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.who { display: flex; align-items: center; gap: 10px; height: var(--lane); border-bottom: 1px solid var(--rule-2); padding-right: 12px; min-width: 0; }
+.who b { font-weight: 600; font-size: 13px; display: block; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who small { font-size: 11px; color: var(--mute); }
+.glyph { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.glyph svg { width: 18px; height: 18px; }
+.lane { position: relative; height: var(--lane); border-bottom: 1px solid var(--rule-2);
+  background: repeating-linear-gradient(90deg, transparent 0 calc(100%/12 - 1px), var(--rule-2) calc(100%/12 - 1px) calc(100%/12)); }
+.bar { position: absolute; top: 11px; height: 30px; min-width: 22px; border-radius: 7px; padding: 0 10px; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; color: #fff; background: var(--c); transition: transform .12s, box-shadow .12s; }
+.bar:hover, .bar.sel { transform: translateY(-1px); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 40%, transparent), 0 0 0 2px var(--paper), 0 0 0 3.5px var(--c); }
+.bar.wait { background: transparent; color: var(--c); border: 1.5px dashed var(--c); }
+.bar.run { background-image: linear-gradient(115deg, rgba(255,255,255,.18) 25%, transparent 25% 50%, rgba(255,255,255,.18) 50% 75%, transparent 75%);
+  background-size: 18px 18px; animation: slide 1s linear infinite; }
+.bar.check { background: color-mix(in srgb, var(--c) 18%, var(--card)); color: var(--ink); border: 1.5px solid var(--c); }
+.bar.fail { background: var(--card); color: var(--bad); border: 1.5px solid var(--bad); }
+.bar .ic { font: 11px var(--mono); opacity: .9; }
+.bar > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+@keyframes slide { to { background-position: 18px 0 } }
+.now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); pointer-events: none; }
+.now::before { content: 'şimdi'; position: absolute; top: -2px; left: 6px; font: 10px var(--mono); background: var(--ink); color: var(--paper); padding: 1px 5px; border-radius: 3px; }
+svg.deps { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+svg.deps path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 3 3; opacity: .55; }
+.empty { padding: 40px 28px; color: var(--ink-2); }
+.empty b { display: block; font: 28px/1.2 var(--serif); font-weight: 400; color: var(--ink); margin-bottom: 6px; }
+
+.doc { padding: 18px 28px 28px; border-top: 1px solid var(--rule); display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.doc h3, .block h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--mute); margin-bottom: 10px; display: flex; justify-content: space-between; gap: 8px; }
+.report { white-space: pre-wrap; font-size: 14px; line-height: 1.6; max-height: 420px; overflow: auto; }
+.report::selection, .report *::selection { background: color-mix(in srgb, var(--claude) 30%, transparent); }
+.convo { display: grid; gap: 8px; max-height: 420px; overflow: auto; align-content: start; }
+.msg { padding: 9px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--rule); font-size: 13px; white-space: pre-wrap; }
+.msg.me { background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
+.msg small { display: block; font: 11px var(--mono); color: var(--mute); margin-bottom: 3px; }
+.msg q { display: block; border-left: 2px solid var(--claude); padding-left: 8px; color: var(--ink-2); margin-bottom: 4px; font-style: italic; }
+.msg q::before, .msg q::after { content: none; }
+.quote-btn { position: fixed; z-index: 5; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+
+.right { display: flex; flex-direction: column; min-width: 0; }
+.block { padding: 18px 24px; border-bottom: 1px solid var(--rule); }
+.detail h4 { font: 24px/1.15 var(--serif); font-weight: 400; margin: 6px 0 4px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+.kv dt { color: var(--ink-2); }
+.kv dd { font-family: var(--mono); font-size: 12px; text-align: right; overflow-wrap: anywhere; }
+.result { margin-top: 12px; font: 12px/1.5 var(--mono); white-space: pre-wrap; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; }
+.ck { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; margin-top: 8px; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; font-size: 13px; }
+.ck .r { font: 11px var(--mono); }
+.ck.pass .r { color: var(--ok); } .ck.fail .r { color: var(--bad); }
+.g { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px dashed var(--rule); }
+.g:first-of-type { border: 0; padding-top: 0; }
+.g small { color: var(--mute); font-size: 12px; overflow-wrap: anywhere; }
+.acts { grid-row: span 2; display: flex; gap: 6px; align-self: center; }
+.btn { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--rule); font-size: 12px; font-weight: 600; background: var(--card); }
+.btn.go { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:focus-visible, .bar:focus-visible, .chip:focus-visible { outline: 2px solid var(--claude); outline-offset: 2px; }
+.list li { list-style: none; display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 13px; border-top: 1px solid var(--rule-2); }
+.list li:first-child { border: 0; }
+.list ul { padding: 0; }
+.list .hit { font: 11px var(--mono); color: var(--noesis); white-space: nowrap; }
+.list .warn { color: var(--warn); }
+form.cm { display: grid; gap: 6px; margin-top: 12px; }
+form.cm textarea { width: 100%; min-height: 64px; resize: vertical; padding: 8px; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
+form.cm .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+form.cm input[type=text], form.cm input[type=number] { width: 120px; padding: 5px 7px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: 9px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.on { opacity: 1; }
+
+@media (max-width: 1080px) { .main { grid-template-columns: 1fr; } .left { border-right: 0; } .stats { display: none; } .doc { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .top { grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; } .goals, .sec-h, .tl-wrap, .doc, .block { padding-left: 16px; padding-right: 16px; } .sec-h { flex-direction: column; align-items: flex-start; } .palette kbd { display: none; } }
+@media (prefers-reduced-motion: reduce) { .bar.run { animation: none; } .bar, .toast { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="mark">santral<i>.</i></div>
+  <form class="palette" id="chat">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    <input id="ask" aria-label="Yöneticiye yaz" placeholder="Yöneticiye ne yapılacağını yaz…" autocomplete="off">
+    <kbd>Ctrl K</kbd>
+  </form>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="main">
+  <section class="left">
+    <nav class="goals" id="goals" aria-label="Hedefler"></nav>
+    <div class="sec-h"><h2 id="gtitle">Santral</h2><div class="legend" id="legend"></div></div>
+    <div class="tl-wrap"><div class="tl" id="tl"></div></div>
+    <div class="doc">
+      <div><h3>Rapor <span class="muted" id="rhint">metin seç → yorum</span></h3><div class="report" id="report"></div></div>
+      <div><h3>Konuşma</h3><div class="convo" id="convo" aria-live="polite"></div></div>
+    </div>
+  </section>
+  <aside class="right">
+    <div class="block detail" id="detail"></div>
+    <div class="block" id="gates"></div>
+    <div class="block list" id="ctx"></div>
+    <div class="block list" id="routines"></div>
+  </aside>
+</div>
+<button class="quote-btn" id="qbtn" hidden>Yorum yaz</button>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const TOKEN = '__FA_TOKEN__';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const ENG = { claude: ['Claude', 'var(--claude)'], codex: ['Codex', 'var(--codex)'], antigravity: ['agy', 'var(--agy)'], noesis: ['Noesis', 'var(--noesis)'] };
+const color = (e) => (ENG[e] ?? ENG.codex)[1];
+const G = {
+  build: '<path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/>', design: '<path d="M12 4l8 15H4z"/>', grow: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l5 5"/>',
+  make: '<path d="M5 7h14M5 12h14M5 17h9"/>', run: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>', none: '<rect x="5" y="5" width="14" height="14" rx="3"/>',
+};
+const glyph = (k, c) => `<span class="glyph" style="--c:${c}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${G[k] ?? G.none}</svg></span>`;
+const ACTION = { 'plan.approve': 'Planı başlat', 'git.merge': 'Dalı birleştir', 'git.push': 'Uzak depoya gönder', 'fs.delete': 'Dosya sil', 'credits.spend': 'Kredi harca',
+  'external.send': 'Dışarı gönder', 'task.recover': 'Takılan işi yeniden dene', 'roblox.publish': 'Roblox yayını' };
+const STATUS = { done: ['', '✓'], in_progress: ['run', '●'], in_review: ['check', '⚙'], todo: ['wait', '…'], backlog: ['wait', '…'], blocked: ['wait', '⏸'], failed: ['fail', '✕'], cancelled: ['wait', '–'] };
+const hm = (t) => new Date(t).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+const dur = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? `${s} sn` : s < 3600 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 3600)} sa ${Math.floor(s % 3600 / 60)} dk`; };
+const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n));
+
+async function api(path, opts = {}) {
+  const r = await fetch(`/api/${path}`, { ...opts, headers: { 'x-fa-token': TOKEN, ...(opts.body ? { 'content-type': 'application/json' } : {}) } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 2600); }
+
+let S = null, goalId = null, G2 = null, taskId = null, agents = {};
+const pick = (k, v) => { try { v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k, v); } catch {} return v; };
+
+async function refresh() {
+  try { S = await api('state'); } catch (e) { toast(`Bağlantı: ${e.message}`); return; }
+  agents = Object.fromEntries(S.agents.map((a) => [a.id, a]));
+  if (!goalId || !S.goals.some((g) => g.id === goalId)) goalId = pick('fa-goal') && S.goals.some((g) => g.id === pick('fa-goal')) ? pick('fa-goal') : S.goals[0]?.id ?? null;
+  renderTop(); renderGoals(); renderGates(); renderSide();
+  if (goalId) { try { G2 = await api(`goals/${goalId}`); } catch { G2 = null; } } else G2 = null;
+  renderGoal();
+  if (taskId) await showTask(taskId, true);
+}
+
+function renderTop() {
+  const c = S.counts, done = c.done ?? 0, total = Object.values(c).reduce((a, b) => a + b, 0);
+  const f = S.forecast.find((x) => x.exhaustAt);
+  $('stats').innerHTML = [
+    [`<span class="live${S.driving ? ' on' : ''}"></span>${S.running}`, 'çalışıyor'], [`${done}/${total}`, 'görev bitti'],
+    [kfmt(S.tokensToday), f ? `token · ${hm(f.exhaustAt)}'de dolar` : 'token bugün'], [S.approvals.length, 'onay bekliyor'],
+  ].map(([b, s]) => `<div class="stat"><b class="mono">${b}</b><span>${s}</span></div>`).join('');
+  $('legend').innerHTML = Object.values(ENG).slice(0, 3).map(([n, col]) => `<span style="--c:${col}">${n}</span>`).join('');
+}
+
+function renderGoals() {
+  $('goals').innerHTML = S.goals.map((g) => {
+    const p = g.progress, n = Object.values(p).reduce((a, b) => a + b, 0);
+    return `<button class="chip${g.id === goalId ? ' sel' : ''}" data-g="${g.id}">${esc(g.title.slice(0, 40))}<i>${p.done ?? 0}/${n}</i></button>`;
+  }).join('');
+}
+$('goals').addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (b) { goalId = b.dataset.g; pick('fa-goal', goalId); taskId = null; refresh(); } });
+
+function renderGoal() {
+  if (!G2) {
+    $('gtitle').innerHTML = 'Santral';
+    $('tl').innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Henüz hedef yok.</b>Yukarıya ne yapılacağını yaz; yönetici planlayıp uzmanlara dağıtır.</div>`;
+    $('report').textContent = ''; $('convo').innerHTML = ''; $('detail').innerHTML = '<h3>Seçili görev</h3><p class="muted">Çizelgeden bir görev seç.</p>';
+    return;
+  }
+  const { goal, tasks, deps } = G2;
+  const open = tasks.filter((t) => !['done', 'failed', 'cancelled'].includes(t.status)).length;
+  $('gtitle').innerHTML = `${esc(goal.title)} <em>· ${tasks.length} görev${open ? `, ${open} açık` : ''} · ${esc(goal.status)}</em>`;
+  const t0 = Math.min(goal.created_at, ...tasks.map((t) => t.started_at ?? t.created_at));
+  // Bitmiş hedefte çizelge son bitişte kapanır; açık hedefte "şimdi"ye kadar uzar.
+  const closed = !open && tasks.length;
+  const end = Math.max(closed ? 0 : S.now, ...tasks.map((t) => t.finished_at || 0));
+  const span = Math.max(60_000, (end - t0) * 1.08);
+  const pct = (t) => `${((t - t0) / span) * 100}%`;
+  const laneOf = (t) => t.agent ?? `motor:${t.last_engine ?? t.engine ?? 'codex'}`;
+  const lanes = [...new Set(tasks.map(laneOf))];
+  // Kısa çizelgede saniye de yazılır, yoksa bütün işaretler aynı dakikayı gösterir.
+  const tick = (t) => (span < 10 * 60_000 ? new Date(t).toLocaleTimeString('tr-TR') : hm(t));
+  let html = '<div></div><div class="axis">' + Array.from({ length: 7 }, (_, i) => `<span>${tick(t0 + (span / 6) * i)}</span>`).join('') + '</div>';
+  for (const l of lanes) {
+    const a = agents[l];
+    const eng = a?.engine ?? l.replace('motor:', '');
+    html += `<div class="who">${glyph(a?.department ?? 'none', color(eng))}<div><b>${esc(a?.name ?? ENG[eng]?.[0] ?? eng)}</b><small>${esc(a ? `${a.department} · ${ENG[a.engine]?.[0] ?? a.engine}` : 'atanmamış')}</small></div></div><div class="lane">`;
+    for (const t of tasks.filter((x) => laneOf(x) === l)) {
+      const [cls, ic] = STATUS[t.status] ?? ['wait', '?'];
+      const s = t.started_at ?? S.now, e = t.status === 'in_progress' ? S.now : t.finished_at || (t.started_at ? S.now : S.now + span * 0.04);
+      html += `<button class="bar ${cls}${t.id === taskId ? ' sel' : ''}" id="b-${t.id}" data-t="${t.id}" style="--c:${color(t.last_engine ?? t.engine)};left:${pct(s)};width:${Math.max(0.5, ((e - s) / span) * 100)}%" title="${esc(t.title)}"><span class="ic">${ic}</span><span>${esc(t.title)}</span></button>`;
+    }
+    html += '</div>';
+  }
+  html += `${closed ? '' : `<div class="now" style="left:calc(190px + (100% - 190px) * ${(S.now - t0) / span})"></div>`}<svg class="deps" id="deps"></svg>`;
+  $('tl').innerHTML = html;
+  drawDeps(deps);
+  $('report').textContent = G2.report ?? (goal.status === 'active' ? 'Rapor hedef bitince yazılır.' : '—');
+  $('convo').innerHTML = G2.comments.map((c) => `<div class="msg${c.author === 'kullanıcı' ? ' me' : ''}"><small>${esc(c.author)} · ${hm(c.at)}</small>${c.anchor?.quote ? `<q>${esc(c.anchor.quote)}</q>` : ''}${esc(c.body)}</div>`).join('') || '<p class="muted">Konuşma yok.</p>';
+  $('convo').scrollTop = 1e6;
+}
+function drawDeps(deps = G2?.deps ?? []) {
+  const svg = $('deps'); if (!svg) return;
+  const box = $('tl').getBoundingClientRect();
+  let d = '';
+  for (const { task_id, depends_on } of deps) {
+    const A = $(`b-${depends_on}`), B = $(`b-${task_id}`); if (!A || !B) continue;
+    const a = A.getBoundingClientRect(), b = B.getBoundingClientRect();
+    const x1 = a.right - box.left, y1 = a.top + a.height / 2 - box.top, x2 = b.left - box.left, y2 = b.top + b.height / 2 - box.top;
+    const mx = x1 + Math.max(8, (x2 - x1) / 2);
+    d += `M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2 - 2} ${y2}`;
+  }
+  svg.innerHTML = d ? `<path d="${d}"/>` : '';
+}
+new ResizeObserver(() => drawDeps()).observe($('tl'));
+$('tl').addEventListener('click', (e) => { const b = e.target.closest('.bar'); if (b) showTask(b.dataset.t); });
+
+async function showTask(id, quiet) {
+  let v;
+  try { v = await api(`tasks/${id}`); } catch (e) { if (!quiet) toast(e.message); return; }
+  taskId = id;
+  document.querySelectorAll('.bar.sel').forEach((b) => b.classList.remove('sel'));
+  $(`b-${id}`)?.classList.add('sel');
+  const t = v.task, a = agents[t.assignee_agent_id];
+  const tok = v.runs.reduce((n, r) => n + (r.usage ? r.usage.input + r.usage.cacheWrite + r.usage.output : 0), 0);
+  const time = v.runs.reduce((n, r) => n + ((r.finished_at || S.now) - r.started_at), 0);
+  const [verdict, ...fb] = (v.review ?? '').split('\n');
+  const keep = document.activeElement?.closest?.('#detail form') ? $('detail').querySelector('textarea')?.value : '';
+  $('detail').innerHTML = `<h3>Seçili görev <span class="mono">${id.slice(0, 8)}</span></h3>
+    <small class="muted">${esc(a ? `${a.name} · ` : '')}${esc(ENG[t.engine]?.[0] ?? t.engine ?? '')}</small><h4>${esc(t.title)}</h4>
+    <dl class="kv"><dt>Durum</dt><dd>${esc(t.status)}</dd><dt>Deneme / tur</dt><dd>${t.attempts} / ${t.review_round}</dd>
+    ${v.worktree ? `<dt>Dal</dt><dd>${esc(v.worktree.branch)} (${esc(v.worktree.status)})</dd>` : ''}
+    <dt>Süre</dt><dd>${v.runs.length ? dur(time) : '—'}</dd><dt>Token</dt><dd>${tok ? kfmt(tok) : '—'}</dd></dl>
+    ${v.review ? `<div class="ck ${verdict.startsWith('PASS') ? 'pass' : 'fail'}"><span>${esc(fb.join(' ').slice(0, 140) || 'Kontrol')}</span><span class="r">${esc(verdict)}</span></div>` : ''}
+    ${v.runs.filter((r) => r.error).slice(-1).map((r) => `<div class="ck fail"><span>${esc(r.error.slice(0, 160))}</span><span class="r">${esc(r.status)}</span></div>`).join('')}
+    ${t.result?.text ? `<div class="result">${esc(t.result.text.slice(-1500))}</div>` : ''}
+    <div class="convo" style="margin-top:12px;max-height:200px">${v.comments.map((c) => `<div class="msg${c.author === 'kullanıcı' ? ' me' : ''}"><small>${esc(c.author)}${c.anchor?.file ? ` · ${esc(c.anchor.file)}${c.anchor.line ? `:${c.anchor.line}` : ''}` : ''}</small>${esc(c.body)}</div>`).join('')}</div>
+    <form class="cm" id="tcm"><textarea name="body" placeholder="Bu işe yorum…" required>${esc(keep)}</textarea>
+    <div class="row"><input type="text" name="file" placeholder="dosya (isteğe bağlı)"><input type="number" name="line" min="1" placeholder="satır">
+    <label><input type="checkbox" name="wake" checked> düzeltmesi için uyandır</label><button class="btn go">Gönder</button></div></form>`;
+  $('tcm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const anchor = f.get('file') ? { file: f.get('file'), line: f.get('line') ? Number(f.get('line')) : null } : null;
+    try {
+      await api('comments', { method: 'POST', body: JSON.stringify({ entity: 'task', entityId: id, body: f.get('body'), anchor, wake: f.get('wake') === 'on' }) });
+      e.target.reset(); toast(f.get('wake') === 'on' ? 'Yorum eklendi, iş yeniden kuyrukta' : 'Yorum eklendi'); refresh();
+    } catch (err) { toast(err.message); }
+  });
+}
+
+function renderGates() {
+  $('gates').innerHTML = `<h3>Onay kapıları <span class="mono">${S.approvals.length}</span></h3>` + (S.approvals.map((a) => {
+    const p = a.payload ?? {};
+    const info = [p.branch, p.tasks != null ? `${p.tasks} görev` : null, p.files != null ? `${p.files} dosya, ${kfmt(p.bytes)} B` : null, p.commits, p.timeouts ? `${p.timeouts} kez takıldı` : null].filter(Boolean).join(' · ');
+    return `<div class="g"><b>${esc(ACTION[a.action] ?? a.action)}</b><div class="acts"><button class="btn go" data-a="${a.id}" data-v="1">Onayla</button><button class="btn" data-a="${a.id}" data-v="0">Reddet</button></div><small>${esc(info || a.entity_id?.slice(0, 8) || '')}</small></div>`;
+  }).join('') || '<p class="muted">Bekleyen onay yok.</p>');
+}
+$('gates').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  b.disabled = true;
+  try { await api(`approvals/${b.dataset.a}`, { method: 'POST', body: JSON.stringify({ approve: b.dataset.v === '1' }) }); toast(b.dataset.v === '1' ? 'Onaylandı' : 'Reddedildi'); refresh(); }
+  catch (err) { toast(err.message); b.disabled = false; }
+});
+
+function renderSide() {
+  $('ctx').innerHTML = `<h3>Noesis bağlamı <span class="mono">${S.knowledge.length}</span></h3><ul>${S.knowledge.map((k) => `<li><span>${esc(k.title)}</span><span class="hit${k.warning ? ' warn' : ''}">${k.warning ? `⚠ ${esc(k.warning)}` : 'önbellek'}</span></li>`).join('') || '<li class="muted">Henüz not okunmadı.</li>'}</ul>`;
+  $('routines').innerHTML = `<h3>Rutinler <span class="mono">${S.routines.length}</span></h3><ul>${S.routines.map((r) => `<li><span>${esc(r.name)}</span><span class="mono muted">${r.enabled ? (r.next_run_at ? `${new Date(r.next_run_at).toLocaleDateString('tr-TR')} ${hm(r.next_run_at)}` : '') : 'kapalı'}</span></li>`).join('') || '<li class="muted">Rutin yok (fa routine add).</li>'}</ul>`;
+}
+
+$('chat').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('ask').value.trim(); if (!text) return;
+  $('ask').disabled = true;
+  try { const r = await api('chat', { method: 'POST', body: JSON.stringify({ text }) }); goalId = r.goalId; pick('fa-goal', goalId); $('ask').value = ''; toast('Yönetici planlıyor…'); refresh(); }
+  catch (err) { toast(err.message); }
+  finally { $('ask').disabled = false; }
+});
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('ask').focus(); } });
+
+// Rapor pasajına yorum: metin seçilince düğme çıkar.
+let quote = '';
+document.addEventListener('selectionchange', () => {
+  const sel = getSelection(), q = $('qbtn');
+  if (!sel || sel.isCollapsed || !$('report').contains(sel.anchorNode)) { q.hidden = true; return; }
+  quote = sel.toString().trim().slice(0, 500);
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  q.style.left = `${Math.min(innerWidth - 110, r.left)}px`; q.style.top = `${Math.max(8, r.top - 40)}px`; q.hidden = !quote;
+});
+$('qbtn').addEventListener('mousedown', (e) => e.preventDefault());
+$('qbtn').addEventListener('click', async () => {
+  const body = prompt(`“${quote.slice(0, 80)}” için yorum:`);
+  $('qbtn').hidden = true;
+  if (!body || !goalId) return;
+  try { await api('comments', { method: 'POST', body: JSON.stringify({ entity: 'goal', entityId: goalId, body, anchor: { doc: 'rapor', quote } }) }); toast('Pasaja yorum eklendi'); refresh(); }
+  catch (err) { toast(err.message); }
+});
+
+// Olay akışı: her olayda (kısa gecikmeyle, toplu) yeniden çizilir; bağlantı koparsa tarayıcı kendisi yeniden bağlanır.
+let pending = null;
+function connect(since) {
+  const es = new EventSource(`/api/events?t=${encodeURIComponent(TOKEN)}&since=${since}`);
+  es.onmessage = () => { clearTimeout(pending); pending = setTimeout(refresh, 250); };
+  es.onerror = () => document.querySelector('.live')?.classList.remove('on');
+}
+refresh().then(() => connect(S?.lastSeq ?? 0));
+setInterval(() => { if (S && (S.running || S.driving)) refresh(); }, 15_000);
+</script>
+</body>
+</html>

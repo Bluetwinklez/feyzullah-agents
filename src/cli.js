@@ -10,6 +10,8 @@ import { openDb, tx } from './core/db.js';
 import { since, verifyChain } from './core/events.js';
 import { DEFAULT_PARALLEL } from './core/scheduler.js';
 import { addDependency, blockTask, createTask, getTask, readyTasks, recoverStale } from './core/tasks.js';
+import { resolveApproval } from './ops/gate.js';
+import { createSantral } from './server/http.js';
 import { commitStep, ensureWorktree, mergeWorktree, pushBranch, shelveWorktrees } from './ops/git.js';
 import { addRoutine, listRoutines, setRoutineEnabled, tickRoutines } from './ops/routines.js';
 import { createVault } from './ops/vault.js';
@@ -44,6 +46,8 @@ const USAGE = `Kullanım: fa <komut>
   push <dal> [--remote origin]                 sır taraması + onayla iter
   worktrees [--shelve]                         görev worktree'leri; --shelve dokunulmayanları rafa kaldırır
   verify                                       olay zincirini doğrular
+  serve [--port 4317] [--host 127.0.0.1] [--worktree]
+                                               Santral arayüzü ve yerel API (ağa açılırsa jetonlu adres verir)
   status                                       durum, son olaylar, bütçe ve tahmin
   bins                                         bulunan motorlar
   bench                                        1000 görevle hız ölçümü`;
@@ -103,7 +107,7 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify', 'serve'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
@@ -240,6 +244,22 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       for (const w of db.prepare('SELECT * FROM worktrees ORDER BY created_at').all()) say(`${w.task_id.slice(0, 8)} ${w.status.padEnd(8)} ${w.branch} ${w.path}`);
       return 0;
     }
+    if (cmd === 'serve') {
+      const { one, opt } = parseArgs(rest, new Set(['worktree']));
+      if (!activeAgents(db).length) sync();
+      const ad = await getAdapters();
+      const port = one('port') ? Number(one('port')) : 4317;
+      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new UsageError(`geçersiz port: ${one('port')}`);
+      const santral = createSantral({ db, adapters: ad, llm: llmFor(ad), cwd: root, knowledge: knowledgeOf(), vault, host: one('host') ?? '127.0.0.1', port,
+        driveOpts: { lessonParentId: process.env.FA_NOESIS_PARENT ?? null, ...(opt.worktree ? worktreeOpts() : {}) } });
+      const url = await santral.listen();
+      say(`Santral: ${url}`);
+      if ((one('host') ?? '127.0.0.1') !== '127.0.0.1') say('uyarı: ağa açık; adresi yalnız güvendiğin cihazlarla paylaş');
+      santral.kick();
+      await new Promise((r) => process.once('SIGINT', r));
+      await santral.close();
+      return 0;
+    }
     if (cmd === 'verify') {
       const v = verifyChain(db);
       say(v.ok ? `olay zinciri sağlam (${v.checked} olay)` : `olay zinciri bozuk: #${v.brokenAt}`);
@@ -276,12 +296,8 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     }
     if (cmd === 'approve') {
       const { pos, opt } = parseArgs(rest, new Set(['reject']));
-      const a = pos[0] && db.prepare('SELECT * FROM approvals WHERE id = ? OR id LIKE ?').get(pos[0], `${pos[0]}%`);
-      if (!a) throw new UsageError(`onay bulunamadı: ${pos[0] ?? ''}`);
-      if (a.action === 'plan.approve') approvePlan(db, a.entity_id, { approve: !opt.reject });
-      else decideApproval(db, a.id, { approve: !opt.reject, by: 'kullanıcı' });
-      // Kurtarma kartı onaylanınca takılan görev yeniden kuyruğa girer.
-      if (a.action === 'task.recover' && !opt.reject && getTask(db, a.entity_id)?.status === 'blocked') blockTask(db, a.entity_id, { retryAt: Date.now(), reason: 'kurtarma onaylandı' });
+      let a;
+      try { a = resolveApproval(db, pos[0], { approve: !opt.reject }); } catch (err) { throw new UsageError(err.message); }
       say(`${opt.reject ? 'reddedildi' : 'onaylandı'}: ${a.action}`);
       return 0;
     }
