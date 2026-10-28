@@ -12,7 +12,8 @@ import { openDb } from '../../src/core/db.js';
 import { claimTask, createTask, finishRun, readyTasks } from '../../src/core/tasks.js';
 import { exportWorkspace, importWorkspace } from '../../src/ops/transfer.js';
 import { loadPackages, packageForKind, packageModule } from '../../src/packages/loader.js';
-import { importProduction, layers, parseStageTables, promoteNext } from '../../packages/roblox/index.js';
+import { importBacklog, importProduction, KARARLAR, layers, parseStageTables, promoteNext } from '../../packages/roblox/index.js';
+import { KALAN } from '../../packages/roblox/kalan.js';
 
 const MD = `# Üretim sırası
 
@@ -202,4 +203,50 @@ test('CLI: roblox çalışma alanı, içe aktarma, elle adım, autopilot', async
   await run(['run']);
   assert.ok(seen.includes('Kod geliştirme sırası (8. aşama), 4. adım: Envanter.'));
   assert.ok(seen.includes('Üretim sırası, 1. adım: Tasarım.'), 'autopilot diğer içe aktarılmış hedefi de sürdürür');
+});
+
+test('kalan işler: hedefler, uzmanlar, bağımlılıklar tutarlı; hiçbiri kendiliğinden çalışmaz', (t) => {
+  const db = openDb();
+  const rb = packageForKind(loadPackages(), 'roblox');
+  syncAgents(db, loadAgents([join(import.meta.dirname, '..', '..', 'agents'), rb.agentsDir]));
+  const res = importBacklog(db, { root: tmp(t), checks: ['node -e "0"'] });
+  assert.deepEqual(res.map((r) => r.title), KALAN.map((g) => g.title));
+  assert.equal(res.reduce((n, r) => n + r.tasks, 0), KALAN.reduce((n, g) => n + g.tasks.length, 0));
+  assert.deepEqual(readyTasks(db), [], 'hepsi backlog');
+  const rows = db.prepare('SELECT status, assignee_agent_id a, engine, checks, needs_review r FROM tasks').all();
+  assert.ok(rows.every((x) => x.status === 'backlog' && x.a?.startsWith('rb-')), 'her iş bir Roblox uzmanına atanmış');
+  assert.ok(rows.every((x) => (x.engine === 'codex') === Boolean(x.checks) || x.checks === null), 'kontroller yalnız kod işlerinde');
+  assert.equal(rows.filter((x) => x.r).length, KALAN.length, 'her hedefin sonunda bağımsız kontrol');
+
+  // Bağımlılık sırası: 9. adım tasarımı, 8. adım yeniden kontrolü bitmeden açılamaz.
+  const goalOf = (title) => db.prepare('SELECT id FROM goals WHERE title = ?').get(title).id;
+  const arac = goalOf('8. adım Araç: kontrol-8 düzeltmeleri');
+  const catisma = goalOf('9. adım: Çatışma');
+  assert.equal(promoteNext(db, catisma), null, 'önceki adım bitmeden açılmaz');
+  const order = [];
+  for (let i = 0; i < 40; i++) {
+    const o = promoteNext(db, arac);
+    if (!o) break;
+    order.push(o.title);
+    db.prepare("UPDATE tasks SET status = 'done' WHERE id = ?").run(o.taskId);
+  }
+  assert.equal(order.length, 10);
+  assert.ok(order.indexOf('E1 araç: süreye bağlı adım sınırı') < order.indexOf('E2 araç: yatay ve düşey hız ayrımı'));
+  assert.ok(order.indexOf('E2 araç: yatay ve düşey hız ayrımı') < order.indexOf('E3 araç: sağlamlık belgeleri'));
+  assert.equal(order.at(-1), '8. adım Araç: yeniden kontrol', 'yeniden kontrol en sona kalır');
+  assert.equal(promoteNext(db, catisma).title, 'Çatışma: tasarım belgesi');
+
+  // Tekrar içe aktarma çoğaltmaz.
+  assert.ok(importBacklog(db, { root: tmp(t) }).every((r) => r.skipped));
+  assert.equal(db.prepare('SELECT count(*) n FROM tasks').get().n, KALAN.reduce((n, g) => n + g.tasks.length, 0));
+  db.close();
+});
+
+test('kalan işler: yayın ve ödeme işleri anahtar ya da yayın yazmayı yasaklar, kararlar listelenir', () => {
+  const text = KALAN.flatMap((g) => g.tasks.map((x) => x.prompt)).join('\n');
+  assert.match(KALAN.find((g) => g.key === 'yayin').tasks.find((x) => x.key === 'kod').prompt, /Hiçbir Open Cloud çağrısı, anahtar ya da yayın komutu yazılmaz/);
+  assert.match(KALAN.find((g) => g.key === 'odeme').tasks.find((x) => x.key === 'kod').prompt, /Gerçek MarketplaceService çağrısı yok/);
+  assert.ok(!/ROBLOSECURITY|sk-[A-Za-z0-9]{20}/.test(text), 'işlerde gizli bilgi yok');
+  assert.ok(KARARLAR.length >= 10 && KARARLAR.every((k) => k.konu && k.secenekler && k.ne_zaman));
+  assert.ok(KARARLAR.some((k) => /Yayın ve Open Cloud/.test(k.konu)));
 });

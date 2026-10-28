@@ -10,6 +10,7 @@ import { createGoal, getGoal, saveDocument, setGoalStatus } from '../../src/core
 import { now, tx } from '../../src/core/db.js';
 import { append } from '../../src/core/events.js';
 import { addDependency, createTask } from '../../src/core/tasks.js';
+import { KALAN, KARARLAR } from './kalan.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 
@@ -165,4 +166,47 @@ export function view(db) {
       steps: db.prepare('SELECT id, title, status FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(g.id),
     })),
   };
+}
+
+export { KARARLAR };
+
+/**
+ * Kalan işleri (kalan.js) backlog olarak açar: hedef başına bir "planning" hedefi, görevler `backlog`, uzmanlar atanmış,
+ * bağımlılıklar kurulmuş (hedefler arası: "hedef/görev"). Hiçbiri kendiliğinden çalışmaz. Aynı başlıklı hedef varsa atlanır.
+ * @param {Db} db @param {{root?: string, checks?: string[], backlog?: typeof KALAN}} [o]
+ * @returns {{goalId: string, title: string, tasks: number, skipped: boolean}[]}
+ */
+export function importBacklog(db, { root = process.cwd(), checks = layers(root).filter((l) => l.layer <= 4).map((l) => l.cmd), backlog = KALAN } = {}) {
+  const hasAgent = (id) => Boolean(db.prepare('SELECT 1 FROM agents WHERE id = ?').get(id));
+  return tx(db, () => {
+    /** @type {Map<string, string>} */
+    const ids = new Map();
+    const lookup = (planKey) => ids.get(planKey) ?? db.prepare('SELECT id FROM tasks WHERE plan_key = ?').get(planKey)?.id;
+    const out = [];
+    const pending = [];
+    for (const g of backlog) {
+      const old = db.prepare(`SELECT id FROM goals WHERE title = ? AND EXISTS (SELECT 1 FROM documents d WHERE d.entity = 'goal' AND d.entity_id = goals.id AND d.name = 'kaynak')`).get(g.title);
+      if (old) { out.push({ goalId: old.id, title: g.title, tasks: 0, skipped: true }); continue; }
+      const goal = createGoal(db, { title: g.title, description: g.description });
+      for (const t of g.tasks) {
+        const planKey = `${g.key}/${t.key}`;
+        const task = createTask(db, {
+          title: t.title, prompt: t.prompt, engine: t.engine, assigneeAgentId: hasAgent(t.agent) ? t.agent : null, goalId: goal.id,
+          status: 'backlog', needsReview: Boolean(t.review), checks: t.engine === 'codex' && t.checks !== 'none' ? checks : null, planKey,
+        });
+        ids.set(planKey, task.id);
+        for (const a of t.after ?? []) pending.push({ task: task.id, from: planKey, dep: a.includes('/') ? a : `${g.key}/${a}` });
+      }
+      saveDocument(db, { entity: 'goal', entityId: goal.id, name: 'kaynak', body: g.tasks.map((t, i) => `${i + 1}. ${t.title} (${t.agent})`).join('\n'), author: 'roblox' });
+      setGoalStatus(db, goal.id, 'planning');
+      append(db, { actor: 'roblox', type: 'roblox.backlog_imported', entity: 'goal', entityId: goal.id, data: { tasks: g.tasks.length } });
+      out.push({ goalId: goal.id, title: g.title, tasks: g.tasks.length, skipped: false });
+    }
+    for (const p of pending) {
+      const dep = lookup(p.dep);
+      if (!dep) throw new Error(`bağımlılık bulunamadı: ${p.from} → ${p.dep}`);
+      addDependency(db, p.task, dep);
+    }
+    return out;
+  });
 }
