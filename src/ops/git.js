@@ -10,6 +10,7 @@ import { getTask } from '../core/tasks.js';
 import { TASK_FILE } from '../engines/adapter.js';
 import { scanSecrets } from '../knowledge/secrets.js';
 import { gate } from './gate.js';
+import { securityCheck } from './security.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 
@@ -90,12 +91,12 @@ export function commitStep(dir, message) {
 }
 
 /**
- * Görev dalını ana depoya birleştirir. Onay kapısı (git.merge), temiz depo, birleştirme, kontroller;
- * kontrol düşerse birleştirme geri alınır.
- * @param {Db} db @param {{taskId: string, checks?: string[], ffOnly?: boolean}} o
- * @returns {Promise<{merged: boolean, approvalId?: string|null, reverted?: boolean, error?: string, checks?: any}>}
+ * Görev dalını ana depoya birleştirir. Onay kapısı (git.merge), temiz depo, güvenlik taraması, birleştirme,
+ * kontroller; kontrol düşerse birleştirme geri alınır.
+ * @param {Db} db @param {{taskId: string, checks?: string[], ffOnly?: boolean, audit?: boolean}} o
+ * @returns {Promise<{merged: boolean, approvalId?: string|null, reverted?: boolean, error?: string, checks?: any, security?: import('./security.js').Finding[]}>}
  */
-export async function mergeWorktree(db, { taskId, checks = [], ffOnly = false }) {
+export async function mergeWorktree(db, { taskId, checks = [], ffOnly = false, audit = false }) {
   const wt = getWorktree(db, taskId);
   if (!wt) throw new GitError(`görevin worktree'si yok: ${taskId}`);
   if (wt.status === 'merged') return { merged: true };
@@ -104,7 +105,13 @@ export async function mergeWorktree(db, { taskId, checks = [], ffOnly = false })
   if (!isClean(wt.repo)) return { merged: false, error: 'ana depoda commit edilmemiş değişiklik var' };
   if (wt.status === 'active') commitStep(wt.path, `fa: ${getTask(db, taskId)?.title ?? taskId} (kalanlar)`);
   const title = getTask(db, taskId)?.title ?? taskId;
-  const m = git(wt.repo, ['merge', ffOnly ? '--ff-only' : '--no-ff', '-m', `fa: ${title}`, wt.branch], { allowFail: true });
+  const sec = securityCheck({ repo: wt.repo, base: 'HEAD', branch: wt.branch, audit, auditDir: wt.status === 'active' ? wt.path : wt.repo });
+  if (!sec.ok) {
+    append(db, { actor: 'git', type: 'merge.blocked', entity: 'task', entityId: taskId, data: { findings: sec.findings.map(({ level, kind, file }) => ({ level, kind, file })) } });
+    return { merged: false, security: sec.findings };
+  }
+  const warnings = sec.findings;
+  const m = git(wt.repo, ['merge', ffOnly ? '--ff-only' : '--no-ff', '-m', `fa: birleştir — ${title}`, wt.branch], { allowFail: true });
   if (!m.ok) {
     git(wt.repo, ['merge', '--abort'], { allowFail: true });
     append(db, { actor: 'git', type: 'merge.failed', entity: 'task', entityId: taskId, data: { error: m.err.slice(0, 300) } });
@@ -121,8 +128,8 @@ export async function mergeWorktree(db, { taskId, checks = [], ffOnly = false })
   }
   db.prepare("UPDATE worktrees SET status = 'merged', touched_at = ? WHERE task_id = ?").run(now(), taskId);
   if (git(wt.path, ['status', '--porcelain'], { allowFail: true }).out === '') git(wt.repo, ['worktree', 'remove', wt.path], { allowFail: true });
-  append(db, { actor: 'git', type: 'merge.done', entity: 'task', entityId: taskId, data: { branch: wt.branch } });
-  return { merged: true };
+  append(db, { actor: 'git', type: 'merge.done', entity: 'task', entityId: taskId, data: { branch: wt.branch, warnings: warnings.length } });
+  return { merged: true, security: warnings };
 }
 
 /**

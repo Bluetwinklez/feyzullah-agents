@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { suggestHires } from '../../src/agents/hiring.js';
@@ -30,6 +31,8 @@ const MD = `# Üretim sırası
 | 3 | Ekonomi | yapıldı, kontrol bekliyor | – |
 | 4 | Envanter | Bekliyor | – |
 `;
+
+const onPathSync = (b) => spawnSync(process.platform === 'win32' ? 'where' : 'which', [b], { windowsHide: true }).status === 0;
 
 function tmp(t) {
   const d = mkdtempSync(join(tmpdir(), 'fa-pkg-'));
@@ -113,6 +116,19 @@ test('katmanlar yalnız projede karşılığı olan araçları içerir', (t) => 
   assert.deepEqual(ls.map((l) => l.layer), [1, 1, 2, 3, 4, 4]);
   assert.deepEqual(ls.slice(-2).map((l) => l.cmd), ['node tests/run-a.mjs', 'node tests/run-b.mjs']);
   if (process.platform === 'win32') assert.match(ls[0].cmd, /^set "ROKIT_ROOT=C:\\rk"&& stylua --check src$/);
+  const perf = layers(root, { has: (b) => b === 'lune', maxParts: 500 }).find((l) => l.layer === 5);
+  assert.match(perf.cmd, /rojo build default\.project\.json -o ".+fa-perf-[0-9a-f]{10}\.rbxl" && lune run ".+perf\.luau" ".+\.rbxl" 500$/);
+});
+
+test('performans kapısı: Lune ile Part sayısı eşiği', { skip: !onPathSync('lune') || !onPathSync('rojo') }, (t) => {
+  const root = tmp(t);
+  writeFileSync(join(root, 'default.project.json'), JSON.stringify({ name: 'p', tree: { $className: 'DataModel', Workspace: { $className: 'Workspace',
+    A: { $className: 'Part' }, B: { $className: 'Part' }, M: { $className: 'Model', C: { $className: 'MeshPart' } } } } }));
+  const run = (max) => spawnSync(layers(root, { has: (b) => b === 'lune', maxParts: max }).find((l) => l.layer === 5).cmd, { cwd: root, shell: true, encoding: 'utf8' });
+  const ok = run(10);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(JSON.parse(ok.stdout.trim().split('\n').at(-1)).parts, 3);
+  assert.equal(run(2).status, 1);
 });
 
 test('dışa/içe aktarma: sırlar maskelenir, kimlikler korunur, ikinci aktarım çoğaltmaz', () => {

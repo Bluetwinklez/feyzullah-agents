@@ -15,6 +15,8 @@ import { createSantral } from './server/http.js';
 import { suggestHires } from './agents/hiring.js';
 import { loadPackages, packageForKind, packageModule } from './packages/loader.js';
 import { exportWorkspace, importWorkspace } from './ops/transfer.js';
+import { securityCheck } from './ops/security.js';
+import { compareCcusage, ourDaily } from './ops/ccusage.js';
 import { commitStep, ensureWorktree, mergeWorktree, pushBranch, shelveWorktrees } from './ops/git.js';
 import { addRoutine, listRoutines, setRoutineEnabled, tickRoutines } from './ops/routines.js';
 import { createVault } from './ops/vault.js';
@@ -44,17 +46,19 @@ const USAGE = `Kullanım: fa <komut>
   routine list | off <id> | on <id>            zamanlanmış rutinler
   secret set <AD> [--agent <id>]...            değeri stdin'den okur, DPAPI ile saklar
   secret list | grant <AD> <ajan> | rm <AD>    sır kasası (değer gösterilmez)
-  merge <görev-id> [--check <komut>]... [--ff-only]
+  merge <görev-id> [--check <komut>]... [--ff-only] [--audit]
                                                görev dalını onayla birleştirir, kontrol düşerse geri alır
   push <dal> [--remote origin]                 sır taraması + onayla iter
   worktrees [--shelve]                         görev worktree'leri; --shelve dokunulmayanları rafa kaldırır
   verify                                       olay zincirini doğrular
+  usage [--ccusage <dosya|->]                  günlük Claude kullanımı; ccusage daily --json ile karşılaştırır
+  security [<görev>] [--base <ref>] [--audit]  güvenlik taraması (gizli bilgi, riskli dosya, kod kalıpları)
   packages                                     yüklü alan paketleri
   roblox import [--file docs/uretim-sirasi.md] | next [<hedef>] | layers | autopilot on|off
                                                Roblox paketi (adımlar elle açılır; autopilot kapalı gelir)
   export [--out <dosya>] | import <dosya>      çalışma alanını JSON olarak taşır (sırlar ve günlük hariç)
   hire [--write <id>]                          işe alma önerileri; --write uzman dosyasını yazar
-  serve [--port 4317] [--host 127.0.0.1] [--worktree]
+  serve [--port 4317 | FA_PORT] [--host 127.0.0.1] [--worktree]
                                                Santral arayüzü ve yerel API (ağa açılırsa jetonlu adres verir)
   status                                       durum, son olaylar, bütçe ve tahmin
   bins                                         bulunan motorlar
@@ -115,7 +119,7 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify', 'serve', 'packages', 'roblox', 'export', 'import', 'hire'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify', 'security', 'usage', 'serve', 'packages', 'roblox', 'export', 'import', 'hire'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
@@ -192,10 +196,6 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       cwdFor: (t) => ensureWorktree(db, { repo: root, taskId: t.id }),
       onSucceeded: (t, at) => commitStep(at, `fa: ${t.title}`),
     });
-    /** Roblox içe aktarmasıyla açılmış hedefler (kaynak belgesi olanlar). */
-    const importedGoals = () => db.prepare(`SELECT g.id FROM goals g WHERE g.status IN ('planning', 'active')
-      AND EXISTS (SELECT 1 FROM documents d WHERE d.entity = 'goal' AND d.entity_id = g.id AND d.name = 'kaynak') ORDER BY g.created_at`).all();
-    const openCount = (goalId) => db.prepare("SELECT count(*) n FROM tasks WHERE goal_id = ? AND status IN ('todo', 'in_progress', 'in_review', 'blocked')").get(goalId).n;
     if (cmd === 'run') {
       const { one, opt } = parseArgs(rest, new Set(['network', 'worktree']));
       const ad = await getAdapters();
@@ -204,8 +204,8 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       await driveAll(ad, extra);
       // Roblox autopilot: geçen adımdan sonra sıradaki açılır (yalnız kullanıcı açtıysa; içe aktarmada kapalı).
       const mod = await kindModule();
-      for (let i = 0; mod?.autopilot && mod.autopilot(db) && i < 20; i++) {
-        const opened = importedGoals().map((g) => (openCount(g.id) ? null : mod.promoteNext(db, g.id))).filter(Boolean);
+      for (let i = 0; mod?.advance && i < 20; i++) {
+        const opened = mod.advance(db);
         if (!opened.length) break;
         for (const o of opened) say(`sıradaki adım açıldı: ${o.title}`);
         await driveAll(ad, extra);
@@ -249,12 +249,13 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       return 0;
     }
     if (cmd === 'merge') {
-      const { pos, opt } = parseArgs(rest, new Set(['ff-only']));
+      const { pos, opt } = parseArgs(rest, new Set(['ff-only', 'audit']));
       const taskId = resolveTaskId(db, pos[0] ?? '');
-      const r = await mergeWorktree(db, { taskId, checks: opt.check ?? [], ffOnly: Boolean(opt['ff-only']) });
+      const r = await mergeWorktree(db, { taskId, checks: opt.check ?? [], ffOnly: Boolean(opt['ff-only']), audit: Boolean(opt.audit) });
+      for (const f of r.security ?? []) say(`${f.level === 'block' ? 'ENGEL' : 'uyarı'}: ${f.kind} ${f.file ?? ''} ${f.detail}`);
       if (r.merged) say('birleşti');
       else if (r.approvalId) say(`onay bekliyor: fa approve ${r.approvalId}`);
-      else say(`birleşmedi: ${r.reverted ? 'kontrol düştü, geri alındı' : r.error}`);
+      else say(`birleşmedi: ${r.reverted ? 'kontrol düştü, geri alındı' : r.security ? 'güvenlik taraması engelledi' : r.error}`);
       return r.merged || r.approvalId ? 0 : 1;
     }
     if (cmd === 'push') {
@@ -267,6 +268,30 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       else say(`gönderilemedi: ${r.error}`);
       return r.pushed || r.approvalId ? 0 : 1;
     }
+    if (cmd === 'usage') {
+      const { one } = parseArgs(rest);
+      const src = one('ccusage');
+      if (!src) {
+        for (const [d, n] of [...ourDaily(db)].sort()) say(`${d} ${n}`);
+        return 0;
+      }
+      const text = src === '-' ? await readStdin() : readFileSync(resolve(root, src), 'utf8');
+      let bad = 0;
+      for (const r of compareCcusage(db, JSON.parse(text))) {
+        if (r.over) bad++;
+        say(`${r.date} fa ${r.ours} / ccusage ${r.theirs ?? '-'}${r.share !== null ? ` (%${Math.round(r.share * 100)})` : ''}${r.over ? '  FAZLA SAYIM' : ''}`);
+      }
+      say(bad ? `${bad} günde fa ccusage'tan fazla saydı: kullanım kaydını incele` : 'tutarlı: fa hiçbir gün ccusage’ı geçmedi');
+      return bad ? 1 : 0;
+    }
+    if (cmd === 'security') {
+      const { pos, opt, one } = parseArgs(rest, new Set(['audit']));
+      const wt = pos[0] ? db.prepare('SELECT * FROM worktrees WHERE task_id = ?').get(resolveTaskId(db, pos[0])) : null;
+      const r = securityCheck({ repo: root, base: one('base') ?? (wt ? 'HEAD' : 'HEAD~1'), branch: wt?.branch ?? 'HEAD', audit: Boolean(opt.audit) });
+      for (const f of r.findings) say(`${f.level === 'block' ? 'ENGEL' : 'uyarı'}: ${f.kind} ${f.file ?? ''} ${f.detail}`);
+      say(r.ok ? `temiz (${r.findings.length} uyarı)` : 'engellendi');
+      return r.ok ? 0 : 1;
+    }
     if (cmd === 'worktrees') {
       const { opt } = parseArgs(rest, new Set(['shelve']));
       if (opt.shelve) say(`rafa kalktı: ${shelveWorktrees(db).length}`);
@@ -277,9 +302,9 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       const { one, opt } = parseArgs(rest, new Set(['worktree']));
       if (!activeAgents(db).length) sync();
       const ad = await getAdapters();
-      const port = one('port') ? Number(one('port')) : 4317;
-      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new UsageError(`geçersiz port: ${one('port')}`);
-      const santral = createSantral({ db, adapters: ad, llm: llmFor(ad), cwd: root, knowledge: knowledgeOf(), vault, host: one('host') ?? '127.0.0.1', port,
+      const port = Number(one('port') ?? process.env.FA_PORT ?? 4317);
+      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new UsageError(`geçersiz port: ${one('port') ?? process.env.FA_PORT}`);
+      const santral = createSantral({ db, adapters: ad, llm: llmFor(ad), cwd: root, knowledge: knowledgeOf(), vault, host: one('host') ?? '127.0.0.1', port, pack: await kindModule(),
         driveOpts: { lessonParentId: process.env.FA_NOESIS_PARENT ?? null, ...(opt.worktree ? worktreeOpts() : {}) } });
       const url = await santral.listen();
       say(`Santral: ${url}`);
@@ -312,10 +337,10 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
         return 0;
       }
       if (sub === 'next') {
-        const goals = r2[0] ? [db.prepare('SELECT id FROM goals WHERE id = ? OR id LIKE ?').get(r2[0], `${r2[0]}%`)].filter(Boolean) : importedGoals();
+        const goals = r2[0] ? [db.prepare('SELECT id FROM goals WHERE id = ? OR id LIKE ?').get(r2[0], `${r2[0]}%`)].filter(Boolean) : mod.importedGoals(db);
         if (!goals.length) throw new UsageError('içe aktarılmış hedef yok');
         if (goals.length > 1) throw new UsageError(`birden çok hedef var, birini seç: ${goals.map((g) => g.id.slice(0, 8)).join(', ')}`);
-        if (openCount(goals[0].id)) throw new UsageError('önceki adım bitmedi');
+        if (mod.openCount(db, goals[0].id)) throw new UsageError('önceki adım bitmedi');
         const o = mod.promoteNext(db, goals[0].id);
         say(o ? `açıldı: ${o.title} (çalıştırmak için: fa run)` : 'açılacak adım yok');
         return 0;

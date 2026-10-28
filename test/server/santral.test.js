@@ -129,3 +129,33 @@ test('SSE yeni olayları sırayla iletir ve kaldığı yerden devam eder', async
   assert.deepEqual(ids, [last + 1, last + 2]);
   assert.match(buf, /"type":"deneme.bir"/);
 });
+
+test('paket paneli: içe aktarılmış adımlar elle açılır, autopilot düğmesi', async (t) => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const pack = await import('../../packages/roblox/index.js');
+  const root = mkdtempSync(join(tmpdir(), 'fa-pack-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'docs'));
+  writeFileSync(join(root, 'docs', 'uretim-sirasi.md'), '# Kod sırası\n\n| # | Adım | Durum |\n|---|---|---|\n| 1 | Temel | GEÇTİ |\n| 2 | Ekonomi | Bekliyor |\n| 3 | Envanter | Bekliyor |\n');
+  const { db, call } = await setup(t, { pack });
+  const [g] = pack.importProduction(db, { root, checks: [] });
+  const st = (await call('/api/state')).data.pack;
+  assert.equal(st.autopilot, false);
+  assert.deepEqual(st.goals[0].steps.map((s) => s.status), ['done', 'backlog', 'backlog']);
+  assert.equal((await call('/api/pack/next', { method: 'POST', body: { goalId: 'yok' } })).status, 400);
+  const r = await call('/api/pack/next', { method: 'POST', body: { goalId: g.goalId } });
+  assert.equal(r.data.opened.title, '2. Ekonomi');
+  // Adım bitince sıradaki kendiliğinden açılmaz (autopilot kapalı).
+  await until(() => getTask(db, r.data.opened.taskId).status === 'done');
+  await new Promise((res) => setTimeout(res, 100));
+  assert.equal(db.prepare("SELECT count(*) n FROM tasks WHERE goal_id = ? AND status = 'backlog'").get(g.goalId).n, 1);
+  assert.equal((await call('/api/pack/autopilot', { method: 'POST', body: { on: true } })).data.autopilot, true);
+  await until(() => db.prepare("SELECT count(*) n FROM tasks WHERE goal_id = ? AND status = 'done'").get(g.goalId).n === 3);
+});
+
+test('paketsiz çalışma alanında panel yok', async (t) => {
+  const { call } = await setup(t);
+  assert.equal((await call('/api/state')).data.pack, null);
+  assert.equal((await call('/api/pack')).status, 404);
+});

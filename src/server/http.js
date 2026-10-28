@@ -36,7 +36,7 @@ const TASK_ROWS = `SELECT t.id, t.title, t.status, t.engine, t.assignee_agent_id
  * @param {{db: Db, adapters: Record<string, any>, llm: any, cwd: string, knowledge?: any, vault?: any, driveOpts?: object,
  *   host?: string, port?: number, token?: string|null, tickMs?: number}} o
  */
-export function createSantral({ db, adapters, llm, cwd, knowledge = null, vault = null, driveOpts = {}, host = '127.0.0.1', port = 4317, token = null, tickMs = 60_000 }) {
+export function createSantral({ db, adapters, llm, cwd, knowledge = null, vault = null, driveOpts = {}, host = '127.0.0.1', port = 4317, token = null, tickMs = 60_000, pack = null }) {
   const secret = token ?? randomBytes(18).toString('base64url');
   const loopbackOnly = LOOPBACK.has(host);
   let actualPort = port;
@@ -52,6 +52,9 @@ export function createSantral({ db, adapters, llm, cwd, knowledge = null, vault 
         again = false;
         try {
           await drive({ db, adapters, llm, cwd, signal: ctrl.signal, knowledge, vault, ...driveOpts });
+          // Paket autopilot'u (ör. Roblox): geçen adımdan sonra sıradaki açılır; kapalıysa hiçbir şey açmaz.
+          const opened = pack?.advance?.(db) ?? [];
+          if (opened.length && !ctrl.signal.aborted) again = true;
         } catch (err) {
           append(db, { actor: 'santral', type: 'drive.failed', data: { error: err.message } });
         }
@@ -91,6 +94,7 @@ export function createSantral({ db, adapters, llm, cwd, knowledge = null, vault 
       approvals: pendingApprovals(db).map((a) => ({ ...a, payload: a.payload ? JSON.parse(a.payload) : null })),
       agents: activeAgents(db).map(({ id, name, department, engine, model, reports_to }) => ({ id, name, department, engine, model, reports_to })),
       budget: budgetStatus(db), forecast: budgetForecast(db),
+      pack: pack?.view ? pack.view(db) : null,
       routines: listRoutines(db).map(({ id, name, cron, kind, enabled, next_run_at, when_free, engine }) => ({ id, name, cron, kind, enabled, next_run_at, when_free, engine })),
       knowledge: db.prepare('SELECT id, title, warning, fetched_at FROM knowledge_pages ORDER BY fetched_at DESC LIMIT 8').all(),
       lastSeq: db.prepare('SELECT max(seq) m FROM events').get().m ?? 0,
@@ -176,6 +180,24 @@ export function createSantral({ db, adapters, llm, cwd, knowledge = null, vault 
     if (m === 'GET' && parts[0] === 'org') return send(200, { text: orgChart(db) });
     if (m === 'POST' && parts[0] === 'chat') return send(202, await chat((await body(req)).text));
     if (m === 'POST' && parts[0] === 'run') { kick(); return send(202, { ok: true }); }
+    if (parts[0] === 'pack') {
+      if (!pack?.view) throw new HttpError(404, 'bu çalışma alanında paket paneli yok');
+      if (m === 'GET' && !parts[1]) return send(200, pack.view(db));
+      const b = m === 'POST' ? await body(req) : {};
+      if (m === 'POST' && parts[1] === 'next') {
+        if (!b.goalId || !pack.importedGoals(db).some((g) => g.id === b.goalId)) throw new HttpError(400, 'içe aktarılmış hedef gerekli');
+        if (pack.openCount(db, b.goalId)) throw new HttpError(409, 'önceki adım bitmedi');
+        const o = pack.promoteNext(db, b.goalId);
+        if (o) kick();
+        return send(200, { opened: o });
+      }
+      if (m === 'POST' && parts[1] === 'autopilot') {
+        const on = pack.autopilot(db, Boolean(b.on));
+        append(db, { actor: 'santral', type: 'pack.autopilot', data: { on } });
+        if (on) kick();
+        return send(200, { autopilot: on });
+      }
+    }
     if (m === 'POST' && parts[0] === 'approvals' && parts[1]) {
       const b = await body(req);
       let a;

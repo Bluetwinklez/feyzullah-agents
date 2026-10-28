@@ -2,8 +2,10 @@
 // İçe aktarılan proje durdurulmuş olabilir: hiçbir adım kendiliğinden çalışmaz (autopilot kapalı gelir).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createGoal, getGoal, saveDocument, setGoalStatus } from '../../src/core/board.js';
 import { now, tx } from '../../src/core/db.js';
 import { append } from '../../src/core/events.js';
@@ -11,6 +13,8 @@ import { addDependency, createTask } from '../../src/core/tasks.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 
+const PERF_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'perf.luau');
+const MANIFEST = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'paket.json'), 'utf8'));
 const DONE_RE = /^(GEÇTİ|Tamamlandı|Kapatıldı)/i;
 const onPath = (bin) => spawnSync(process.platform === 'win32' ? 'where' : 'which', [bin], { encoding: 'utf8', windowsHide: true }).status === 0;
 
@@ -22,11 +26,11 @@ export function rokitRoot(env = process.env) {
 }
 
 /**
- * Projeye göre katman 1–4 komutları. Yalnız projede karşılığı olan katmanlar eklenir.
- * @param {string} root @param {{env?: NodeJS.ProcessEnv, has?: (bin: string) => boolean}} [o]
+ * Projeye göre katman 1–4 komutları ve performans kapısı (5). Yalnız projede karşılığı olan katmanlar eklenir.
+ * @param {string} root @param {{env?: NodeJS.ProcessEnv, has?: (bin: string) => boolean, maxParts?: number}} [o]
  * @returns {{layer: number, cmd: string}[]}
  */
-export function layers(root, { env = process.env, has = onPath } = {}) {
+export function layers(root, { env = process.env, has = onPath, maxParts = MANIFEST.perf?.maxParts ?? 20000 } = {}) {
   const rk = rokitRoot(env);
   // cmd.exe: araç shim'leri ROKIT_ROOT ister (sokak-oyunu kanıtlarındaki süreç ayarı).
   const pre = rk && process.platform === 'win32' ? `set "ROKIT_ROOT=${rk}"&& ` : '';
@@ -39,6 +43,12 @@ export function layers(root, { env = process.env, has = onPath } = {}) {
   const tests = join(root, 'tests');
   if (existsSync(tests)) {
     for (const f of readdirSync(tests).filter((n) => /^run-.*\.mjs$/.test(n)).sort()) out.push({ layer: 4, cmd: `node tests/${f}` });
+  }
+  // Performans kapısı: build edilmiş yerde Part sayısı eşiği aşarsa düşer (Noesis: binlerce Part yerine EditableMesh).
+  if (existsSync(join(root, 'default.project.json')) && has('lune')) {
+    // Çıktı projeye değil geçici klasöre yazılır: worktree kirlenmez.
+    const place = join(tmpdir(), `fa-perf-${createHash('sha1').update(root).digest('hex').slice(0, 10)}.rbxl`);
+    out.push({ layer: 5, cmd: `${pre}rojo build default.project.json -o "${place}" && lune run "${PERF_SCRIPT}" "${place}" ${maxParts}` });
   }
   return out;
 }
@@ -124,4 +134,35 @@ export function promoteNext(db, goalId) {
     append(db, { actor: 'roblox', type: 'roblox.step_opened', entity: 'task', entityId: next.id });
   });
   return { taskId: next.id, title: next.title };
+}
+
+/** İçe aktarmayla açılmış, sürmekte olan hedefler (kaynak belgesi olanlar). @param {Db} db */
+export function importedGoals(db) {
+  return db.prepare(`SELECT g.id, g.title, g.status FROM goals g WHERE g.status IN ('planning', 'active')
+    AND EXISTS (SELECT 1 FROM documents d WHERE d.entity = 'goal' AND d.entity_id = g.id AND d.name = 'kaynak') ORDER BY g.created_at`).all();
+}
+
+/** Hedefte açık (çalışan ya da bekleyen) adım sayısı. @param {Db} db @param {string} goalId */
+export function openCount(db, goalId) {
+  return db.prepare("SELECT count(*) n FROM tasks WHERE goal_id = ? AND status IN ('todo', 'in_progress', 'in_review', 'blocked')").get(goalId).n;
+}
+
+/** Autopilot açıksa açık adımı kalmamış her hedefte sıradakini açar. @param {Db} db @returns {{taskId: string, title: string}[]} */
+export function advance(db) {
+  if (!autopilot(db)) return [];
+  return importedGoals(db).map((g) => (openCount(db, g.id) ? null : promoteNext(db, g.id))).filter(Boolean);
+}
+
+/** Santral paneli: içe aktarılmış hedefler ve adımları. @param {Db} db */
+export function view(db) {
+  const goals = db.prepare(`SELECT g.id, g.title, g.status FROM goals g
+    WHERE EXISTS (SELECT 1 FROM documents d WHERE d.entity = 'goal' AND d.entity_id = g.id AND d.name = 'kaynak') ORDER BY g.created_at`).all();
+  return {
+    autopilot: autopilot(db),
+    goals: goals.map((g) => ({
+      ...g,
+      open: openCount(db, g.id),
+      steps: db.prepare('SELECT id, title, status FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(g.id),
+    })),
+  };
 }
