@@ -9,3 +9,4 @@
 | 2026-10-28 | Beyin Claude, iş yükü Codex ve agy | Kullanıcı kuralı (2026-10-21) |
 | 2026-10-28 | Noesis bilgi katmanı çekirdeğin parçası | Projenin office'ten asıl farkı |
 | 2026-10-28 | Şu an yalnızca plan ve ortam hazırlanacak, kod yazılmayacak | Kullanıcı isteği |
+| 2026-10-28 | Proje Office gibi olmayacak: piksel ofis yerine "Santral" arayüzü, Electron yok, hız hedefleri ölçülecek | Kullanıcı: "daha farklı, daha iyi, daha hızlı ve optimize" |
