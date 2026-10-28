@@ -199,17 +199,20 @@ async function finalizeGoals({ db, llm, cwd, goalId = null, knowledge = null, le
 /**
  * Hazır işleri çalıştırır, incelemeleri yürütür ve biten hedefleri kapatır; yapılacak iş kalmayınca döner.
  * @param {{db: Db, adapters: Record<string, any>, llm: Llm, cwd: string, goalId?: string|null, maxRounds?: number, maxParallel?: any, fallback?: any,
- *   signal?: AbortSignal, network?: boolean, knowledge?: any, lessonParentId?: string|null}} o
+ *   signal?: AbortSignal, network?: boolean, knowledge?: any, lessonParentId?: string|null, cwdFor?: (task: any) => string,
+ *   onSucceeded?: (task: any, cwd: string) => void, vault?: any, watchdog?: any}} o
+ *   cwdFor: görev başına worktree; görev kontrolleri de orada koşar.
  */
-export async function drive({ db, adapters, llm, cwd, goalId = null, maxRounds = MAX_ROUNDS, maxParallel, fallback, signal, network, knowledge = null, lessonParentId = null }) {
+export async function drive({ db, adapters, llm, cwd, goalId = null, maxRounds = MAX_ROUNDS, maxParallel, fallback, signal, network, knowledge = null, lessonParentId = null,
+  cwdFor = null, onSucceeded = null, vault = null, watchdog }) {
   const totals = { done: 0, failed: 0, blocked: 0, skippedBudget: 0, reviews: 0 };
   for (let guard = 0; guard < 100 && !signal?.aborted; guard++) {
-    const r = await runReady({ db, adapters, cwd, signal, network, ...(maxParallel ? { maxParallel } : {}), ...(fallback ? { fallback } : {}) });
+    const r = await runReady({ db, adapters, cwd, signal, network, cwdFor, onSucceeded, vault, ...(watchdog ? { watchdog } : {}), ...(maxParallel ? { maxParallel } : {}), ...(fallback ? { fallback } : {}) });
     for (const k of ['done', 'failed', 'skippedBudget']) totals[k] += r[k];
     totals.blocked = r.blocked;
     const inReview = db.prepare(`SELECT * FROM tasks WHERE status = 'in_review' ${goalId ? 'AND goal_id = ?' : ''} ORDER BY created_at`).all(...(goalId ? [goalId] : []));
     if (!inReview.length) break;
-    await Promise.all(inReview.map((t) => handleReview({ db, task: t, llm, cwd, maxRounds })));
+    await Promise.all(inReview.map((t) => handleReview({ db, task: t, llm, cwd: cwdFor ? cwdFor(t) : cwd, maxRounds })));
     totals.reviews += inReview.length;
   }
   const finished = await finalizeGoals({ db, llm, cwd, goalId, knowledge, lessonParentId });

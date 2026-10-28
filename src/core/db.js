@@ -100,6 +100,21 @@ const MIGRATIONS = [
   ALTER TABLE agents ADD COLUMN file TEXT;
   ALTER TABLE agents ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
   `,
+  // 5: işletim (olay zinciri, tek kullanımlık onay, worktree, rutinler, sır kasası)
+  `
+  ALTER TABLE events ADD COLUMN hash TEXT;
+  ALTER TABLE approvals ADD COLUMN used_at INTEGER;
+  CREATE TABLE worktrees (
+    task_id TEXT PRIMARY KEY REFERENCES tasks(id), repo TEXT NOT NULL, path TEXT NOT NULL, branch TEXT NOT NULL, base TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active','shelved','merged')), created_at INTEGER NOT NULL, touched_at INTEGER NOT NULL
+  );
+  CREATE TABLE routines (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, cron TEXT, kind TEXT NOT NULL CHECK (kind IN ('goal','task')), body TEXT NOT NULL, engine TEXT,
+    concurrency TEXT NOT NULL DEFAULT 'skip' CHECK (concurrency IN ('skip','queue')), catch_up TEXT NOT NULL DEFAULT 'latest' CHECK (catch_up IN ('latest','none')),
+    when_free INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, last_run_at INTEGER, next_run_at INTEGER, last_entity_id TEXT, created_at INTEGER NOT NULL
+  );
+  CREATE TABLE vault (name TEXT PRIMARY KEY, cipher TEXT NOT NULL, agents TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

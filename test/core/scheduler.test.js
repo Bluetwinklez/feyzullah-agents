@@ -186,13 +186,38 @@ test('bilinmeyen oturum hatasında oturumsuz bir kez yeniden dener', async () =>
   db.close();
 });
 
-test('zaman aşımı timed_out ve görev failed', async () => {
+test('zaman aşımı iki kez yeniden denenir, sonra kurtarma kartı açılır', async () => {
   const db = openDb();
   const task = createTask(db, { title: 'a', engine: 'codex' });
   const codex = fakeAdapter('codex', () => result({ final: 'yarım', timedOut: true, exitCode: null }));
   await runReady({ db, adapters: { codex }, cwd: '.' });
-  assert.equal(db.prepare('SELECT status FROM runs').get().status, 'timed_out');
-  assert.equal(getTask(db, task.id).status, 'failed');
+  assert.deepEqual(db.prepare('SELECT status FROM runs').all().map((r) => r.status), ['timed_out', 'timed_out', 'timed_out']);
+  const t = getTask(db, task.id);
+  assert.equal(t.status, 'blocked');
+  assert.equal(t.retry_at, null);
+  assert.equal(db.prepare("SELECT action FROM approvals WHERE status = 'pending'").get().action, 'task.recover');
+  db.close();
+});
+
+test('bekçi sessiz kalan çalışmayı durdurur ve görevi yeniden dener', async () => {
+  const db = openDb();
+  const task = createTask(db, { title: 'a', engine: 'codex' });
+  let calls = 0;
+  const codex = {
+    engine: 'codex',
+    execute: (i) => {
+      calls++;
+      if (calls > 1) return Promise.resolve(result({ final: 'tamam' }));
+      // İlk çalışma hiç çıktı vermez ve iptale kadar bekler.
+      return new Promise((res) => i.signal.addEventListener('abort', () => res(result({ final: null, error: 'durduruldu' }))));
+    },
+  };
+  await runReady({ db, adapters: { codex }, cwd: '.', watchdog: { silentMs: 40, checkMs: 10 } });
+  const runs = db.prepare('SELECT status, error FROM runs ORDER BY started_at, rowid').all();
+  assert.equal(runs[0].status, 'timed_out');
+  assert.match(runs[0].error, /bekçi/);
+  assert.equal(runs[1].status, 'succeeded');
+  assert.equal(getTask(db, task.id).status, 'done');
   db.close();
 });
 
