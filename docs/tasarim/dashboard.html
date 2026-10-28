@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ajan Kontrol Odası</title>
+<link rel="stylesheet" href="tema.css">
+<style>
+  .app { display: grid; grid-template-columns: 250px 1fr 300px; grid-template-rows: auto 1fr auto; gap: 14px; padding: 14px; min-height: 100vh; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 10px 14px; }
+  .logo { font-family: var(--px); font-size: 18px; white-space: nowrap; }
+  .logo b { color: var(--claude); }
+  .cmd { flex: 1; display: flex; align-items: center; gap: 10px; background: #0d0b0a; border: 2px solid var(--line); padding: 8px 12px; min-width: 0; }
+  .cmd .sprite { width: 28px; height: 28px; flex: none; }
+  .cmd input { flex: 1; min-width: 0; background: none; border: 0; color: var(--paper); font: 15px var(--mono); outline: none; }
+  .cmd input::placeholder { color: #6f6255; }
+  .cmd kbd { font: 11px var(--px); color: var(--muted); border: 1px solid var(--line); padding: 2px 6px; }
+  .hp { display: flex; gap: 14px; }
+  .hp div { font: 10px var(--px); color: var(--muted); }
+  .bar { display: flex; gap: 2px; margin-top: 4px; }
+  .bar i { width: 7px; height: 10px; background: #2a231e; }
+  .bar i.on { background: var(--c); box-shadow: 0 0 6px var(--c); }
+
+  /* Ekip */
+  .team { display: flex; flex-direction: column; }
+  .agent { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #2a231e; cursor: pointer; transition: background .15s; }
+  .agent:hover { background: #221c18; }
+  .agent .sprite { width: 40px; height: 40px; }
+  .agent b { font-size: 14px; display: block; line-height: 1.1; }
+  .agent small { font: 11px var(--mono); color: var(--muted); }
+  .dot { width: 9px; height: 9px; }
+  .working .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .waiting .dot { background: var(--warn); animation: blink 1s infinite; }
+  .resting .dot { background: #5a4d42; }
+
+  /* Orta */
+  .center { display: grid; grid-template-rows: auto 1fr; gap: 14px; min-width: 0; }
+  .flow { padding: 18px 14px 14px; overflow-x: auto; }
+  .steps { display: grid; grid-template-columns: repeat(6, minmax(92px, 1fr)); position: relative; min-width: 620px; }
+  .steps::before { content: ''; position: absolute; left: 7%; right: 7%; top: 34px; height: 2px;
+    background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 14px); }
+  .steps::after { content: ''; position: absolute; left: 7%; width: 43%; top: 34px; height: 2px;
+    background: repeating-linear-gradient(90deg, var(--claude) 0 8px, transparent 8px 14px); animation: march 1s linear infinite; background-size: 14px 2px; }
+  @keyframes march { to { background-position: 14px 0 } }
+  .step { position: relative; z-index: 1; display: grid; justify-items: center; text-align: center; gap: 6px; }
+  .step .ring { width: 68px; height: 68px; display: grid; place-items: center; background: var(--ink); border: 2px solid var(--line); }
+  .step.done .ring { border-color: var(--ok); }
+  .step.now .ring { border-color: var(--claude); box-shadow: 0 0 0 4px rgba(255,181,71,.15), 0 0 24px rgba(255,181,71,.35); }
+  .step .ring .sprite { width: 48px; height: 48px; }
+  .step .ring.multi { grid-template-columns: repeat(2, 1fr); padding: 4px; gap: 0; }
+  .step .ring.multi .sprite { width: 28px; height: 28px; }
+  .step h4 { font: 11px var(--px); }
+  .step p { font-size: 11px; color: var(--muted); line-height: 1.25; }
+
+  .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; }
+  .col h5 { font: 11px var(--px); color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 8px; text-transform: uppercase; }
+  .col h5 span { color: var(--paper); }
+  .task { background: #0f0d0c; border: 2px solid var(--line); border-left: 4px solid var(--c); padding: 10px; margin-bottom: 8px; transition: transform .15s, border-color .15s; }
+  .task:hover { transform: translate(-2px, -2px); box-shadow: 3px 3px 0 #0a0807; }
+  .task .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .task .sprite { width: 26px; height: 26px; }
+  .task b { font-size: 13px; line-height: 1.25; }
+  .task .meta { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); margin-top: 6px; }
+  .task .round { color: var(--warn); }
+
+  /* Sağ */
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .budget { padding: 12px 14px; display: grid; gap: 12px; }
+  .budget .row { display: grid; grid-template-columns: 70px 1fr 64px; gap: 8px; align-items: center; font: 12px var(--mono); }
+  .budget .row .bar i { width: auto; flex: 1; height: 12px; }
+  .budget .row span:last-child { text-align: right; color: var(--muted); }
+  .gate { display: grid; grid-template-columns: 32px 1fr; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #2a231e; }
+  .gate .sprite { width: 32px; height: 32px; }
+  .gate b { font-size: 13px; display: block; }
+  .gate small { font: 11px var(--mono); color: var(--muted); }
+  .gate .btns { grid-column: 2; display: flex; gap: 6px; margin-top: 8px; }
+  button { font: 11px var(--px); padding: 6px 10px; border: 2px solid var(--line); background: var(--ink-3); color: var(--paper); cursor: pointer; box-shadow: 2px 2px 0 #0a0807; }
+  button:active { transform: translate(2px, 2px); box-shadow: none; }
+  button.yes { background: var(--ok); color: var(--ink); border-color: #0a0807; }
+  .note { display: grid; grid-template-columns: 4px 1fr; gap: 10px; padding: 8px 14px; font-size: 13px; }
+  .note::before { content: ''; background: var(--noesis); }
+  .note small { display: block; font: 10px var(--mono); color: var(--muted); }
+  .note .warn { color: var(--warn); }
+
+  footer { grid-column: 1 / -1; padding: 8px 14px; font: 12px/1.7 var(--mono); max-height: 130px; overflow: hidden; }
+  footer .t { color: #6f6255; margin-right: 10px; }
+  footer .ok { color: var(--ok); } footer .w { color: var(--warn); }
+
+  @media (max-width: 1100px) { .app { grid-template-columns: 1fr; } .side, .team { order: 2; } .board { grid-template-columns: repeat(2, 1fr); } header { flex-wrap: wrap; } }
+  @media (max-width: 560px) { .board { grid-template-columns: 1fr; } .hp { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="panel reveal">
+    <div class="logo">feyzullah<b>·</b>agents</div>
+    <label class="cmd"><span id="pm"></span><input placeholder="Ekibe komut yaz… ör. Roblox sokak oyununa günlük ödül ekle" value="basketbol-tahmin için NBL sezon raporu hazırla, grafikleri ekle"><kbd>ENTER</kbd></label>
+    <div class="hp" id="hp"></div>
+  </header>
+
+  <aside class="panel team reveal" style="animation-delay:.08s">
+    <div class="panel-h">Ekip <span id="teamCount"></span></div>
+    <div id="team"></div>
+  </aside>
+
+  <section class="center">
+    <div class="panel flow reveal" style="animation-delay:.14s">
+      <div class="steps" id="steps"></div>
+    </div>
+    <div class="panel reveal" style="animation-delay:.2s">
+      <div class="panel-h">Pano <span class="mono" style="text-transform:none">dal: ofis/nbl-rapor</span></div>
+      <div class="board" id="board"></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="panel reveal" style="animation-delay:.24s">
+      <div class="panel-h">Bütçe · bugün</div>
+      <div class="budget" id="budget"></div>
+    </div>
+    <div class="panel reveal" style="animation-delay:.3s">
+      <div class="panel-h">Onay bekleyen <span style="color:var(--warn)">2</span></div>
+      <div id="gates"></div>
+    </div>
+    <div class="panel reveal" style="animation-delay:.36s">
+      <div class="panel-h">Noesis bağlamı <span id="feyzo"></span></div>
+      <div id="notes" style="padding:6px 0"></div>
+    </div>
+  </aside>
+
+  <footer class="panel reveal" id="log" style="animation-delay:.42s"></footer>
+</div>
+<script type="module">
+  import { byId, ENGINES, sprite } from './sprites.js';
+  const $ = (id) => document.getElementById(id);
+  const s = (id, size) => sprite(byId[id], { size });
+  const bar = (n, on, c) => `<span class="bar" style="--c:${c}">${Array.from({ length: n }, (_, i) => `<i class="${i < on ? 'on' : ''}"></i>`).join('')}</span>`;
+
+  $('pm').innerHTML = s('prompt', 28);
+  $('hp').innerHTML = [['claude', 7], ['codex', 4], ['agy', 9]].map(([k, v]) =>
+    `<div>${ENGINES[k].name}${bar(10, v, ENGINES[k].color)}</div>`).join('');
+
+  const team = [
+    ['yonetici', 'working', 'plan yazıyor'], ['veri', 'working', 'nbl_2026.csv'], ['yazar', 'working', 'rapor taslağı'],
+    ['tasarimci', 'waiting', 'Krea onayı'], ['kontrolcu', 'waiting', 'sıra bekliyor'], ['arastirmaci', 'resting', '4 dk önce bitti'],
+    ['kodcu', 'resting', 'boşta'], ['tersmuh', 'resting', 'boşta'], ['arsivci', 'working', '3 sayfa okundu'],
+  ];
+  $('teamCount').textContent = team.length;
+  $('team').innerHTML = team.map(([id, st, msg]) => {
+    const c = byId[id];
+    return `<div class="agent ${st}">${s(id, 40)}<div><b>${c.name}</b><small>${msg}</small></div><i class="dot"></i></div>`;
+  }).join('');
+
+  const steps = [
+    ['done', ['prompt'], 'İstek', 'netleşti'], ['done', ['arsivci'], 'Noesis', '3 sayfa bağlam'],
+    ['now', ['yonetici'], 'Yönetici', '4 görev, 1 işe alım'], ['', ['veri', 'yazar', 'tasarimci', 'arastirmaci'], 'Uzmanlar', 'paralel'],
+    ['', ['kontrolcu'], 'Kontrol', 'PASS / NEEDS WORK'], ['', ['arsivci'], 'Rapor', 'arşive yazılır'],
+  ];
+  $('steps').innerHTML = steps.map(([st, ids, h, p]) =>
+    `<div class="step ${st}"><div class="ring ${ids.length > 1 ? 'multi' : ''}">${ids.map((i) => s(i, 48)).join('')}</div><h4>${h}</h4><p>${p}</p></div>`).join('');
+
+  const col = (title, tasks) => `<div class="col"><h5>${title}<span>${tasks.length}</span></h5>${tasks.map(([id, t, m, r]) =>
+    `<div class="task" style="--c:${ENGINES[byId[id].engine].color}"><div class="top">${s(id, 26)}<small class="mono" style="color:var(--muted)">${byId[id].name}</small></div><b>${t}</b><div class="meta"><span>${m}</span>${r ? `<span class="round">${r}</span>` : ''}</div></div>`).join('')}</div>`;
+  $('board').innerHTML = [
+    col('Yapılıyor', [['veri', 'NBL 2026 maç verisini çek ve temizle', '12 dk'], ['yazar', 'Rapor iskeleti ve bölüm başlıkları', '6 dk']]),
+    col('Kontrolde', [['arastirmaci', 'Sakatlık kaynaklarını doğrula', 'kontrolcü bakıyor']]),
+    col('Düzeltiliyor', [['tasarimci', 'Elo grafiği: eksen etiketleri eksik', 'geri bildirim', 'tur 1/2']]),
+    col('Bitti', [['arsivci', 'Noesis: basketbol notları bağlandı', 'PASS'], ['yonetici', 'Görev planı', 'PASS']]),
+  ].join('');
+
+  $('budget').innerHTML = [['claude', 62, '41k tok'], ['codex', 35, '118k tok'], ['agy', 18, '9 istek'], ['noesis', 0, 'ücretsiz']].map(([k, v, t]) =>
+    `<div class="row"><span class="e-${k}">${ENGINES[k].name}</span>${bar(12, Math.round(v / 100 * 12), ENGINES[k].color)}<span>${t}</span></div>`).join('') +
+    `<div class="row"><span style="color:var(--warn)">Krea</span>${bar(12, 3, '#ffcc4d')}<span>~32 kredi</span></div>`;
+
+  $('gates').innerHTML = [
+    ['tasarimci', 'Krea ile 3 grafik görseli', '≈ 10 kredi harcanacak'],
+    ['yonetici', 'ofis/nbl-rapor → main birleştir', 'testler: 158/158 geçti'],
+  ].map(([id, b, m]) => `<div class="gate">${s(id, 32)}<div><b>${b}</b><small>${m}</small></div><div class="btns"><button class="yes">Onayla</button><button>Reddet</button></div></div>`).join('');
+
+  $('feyzo').innerHTML = s('arsivci', 22);
+  $('notes').innerHTML = [
+    ['Basketbol tahmin: skor modeli', 'GitHub repolarım', ''],
+    ['nba_api eksik oyuncu özelliği', 'Basketbol tahmin', ''],
+    ['jev-ultrafast (tarayıcı ajanı)', 'Instagram Arşivi', 'bot kontrolü riski: kullanılmıyor'],
+  ].map(([t, p, w]) => `<div class="note"><div>${t}<small>${p}</small>${w ? `<small class="warn">⚠ ${w}</small>` : ''}</div></div>`).join('');
+
+  $('log').innerHTML = [
+    ['10:41:02', 'ok', 'Prompt Master → yönetici: "NBL 2026 sezon raporu, Elo + eksik oyuncu grafikleri"'],
+    ['10:41:05', '', 'Feyzo: Noesis\'te 3 sayfa bulundu (1 uyarılı sayfa elendi)'],
+    ['10:41:19', '', 'Yönetici: Veri Analisti, Yazar, Tasarımcı, Araştırmacı → 4 görev, cwd=basketbol-tahmin'],
+    ['10:44:51', 'w', 'Kontrolcü: Elo grafiği NEEDS WORK (eksen etiketleri) → tur 1/2'],
+    ['10:45:30', 'w', 'Tasarımcı: Krea çağrısı onay bekliyor (≈10 kredi)'],
+  ].map(([t, c, m]) => `<div><span class="t">${t}</span><span class="${c}">${m}</span></div>`).join('');
+</script>
+</body>
+</html>
