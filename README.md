@@ -18,6 +18,7 @@ Genel amaçlı, çok ajanlı (multi-agent) yapay zekâ çalışma ortamı. Kod, 
 - [Veri kaynakları](docs/KAYNAKLAR.md)
 - [Kararlar](docs/KARARLAR.md)
 - [Benzer projeler](docs/BENZER-PROJELER.md)
+- [Arayüz tasarımı: Santral](docs/tasarim/v2/README.md)
 - Ajan kuralları: [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)
 
 ## Lisans

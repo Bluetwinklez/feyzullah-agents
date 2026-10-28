@@ -89,14 +89,43 @@ Office'te yoktu, bu projenin asıl farkı bu.
 - API anahtarları yalnız DPAPI ile şifreli yerel dosyada durur, repoya ve loglara girmez.
 - CAPTCHA ve bot kontrolü atlatma yok. Noesis'in "önerilmeyen" listesindeki araçlar kullanılmaz.
 
+### 3.4 Office'ten farkı: hız ve optimizasyon
+
+Bu proje Office'in yeni bir kopyası olmayacak. Office'in kodunda ölçülen yavaş noktalar ve her birinin yerine gelecek çözüm:
+
+| Office'te (kodda görülen) | Sorun | feyzullah-agents'ta |
+|---|---|---|
+| Durum `ofis-runtime.json` (433 KB) ve `ofis-board.json` (356 KB), her değişiklikte `JSON.stringify` ile baştan yazılıyor (`runner.js:95`) | Disk ve CPU yükü, dosya büyüdükçe yavaşlıyor, çökmede veri kaybı riski | SQLite WAL kipinde **yalnız eklenen olay kaydı** (append-only). Bir değişiklik tek satır yazar. Çökmeden sonra kaldığı yerden devam eder |
+| Aynı klasördeki görevler sırayla, aynı dalda bekliyor | Paralel çalışabilecek işler birbirini bekliyor | **Bağımlılık grafiği (DAG) zamanlayıcısı.** Görev yalnız gerçekten bağımlı olduğu işi bekler. Bağımsız işler aynı projede de ayrı worktree'lerde paralel çalışır, sonra birleştirilir |
+| Her kontrol bir LLM çağrısı (Reality Checker), en fazla 2 tur ve ardından düzeltici | Yavaş ve token harcıyor | **Önce makine kontrolü:** test, lint, build ve dosya varlığı. Bunlar geçerse LLM yalnız gereken yerde inceler. Basit işlerde LLM kontrolü atlanır |
+| Uzman raporları 4000 ile 6000 karakterde kesiliyor (`admin.js`) | Bağlam kaybı, yönetici eksik bilgiyle karar veriyor | **Yapılandırılmış sonuç:** değişen dosyalar, test sonucu ve kısa özet. Ayrıntı gerektiğinde dosyadan okunur |
+| Her görev için yeni CLI süreci | Soğuk başlangıç gecikmesi | **Sıcak oturum havuzu:** motor başına `--resume` ile yeniden kullanılan oturumlar, kuyruktan iş alan işçiler |
+| Noesis yok, her seferinde bağlam elle veriliyor | Aynı bilgi tekrar tekrar aranıyor | **Bağlam önbelleği:** Noesis sonuçları sorguya göre SQLite FTS'te önbelleğe alınır, görevlere özet olarak verilir |
+| Tek model seçimi, motor sabit | Küçük işte de büyük model çalışıyor | **İş boyutuna göre yönlendirme:** sınıflandırma ve kısa işler hızlı ve ucuz modele, mimari Claude'a. Claude API ajanlarında prompt önbelleği açık |
+| Electron arayüz, durumun tamamı her güncellemede yeniden çiziliyor (`office-model.js`) | Ağır, bellek tüketiyor | **Arayüzsüz çekirdek** + tek dosyalık web arayüzü (60 KB altı). SSE ile yalnız değişen olay gönderilir |
+
+#### Ölçülebilir hedefler
+
+Hedefler aşama 2'den itibaren `fa bench` komutuyla ölçülecek. Office ile aynı görev setinde karşılaştırılacak.
+
+| Ölçüt | Hedef |
+|---|---|
+| Çekirdek açılışı | 1 sn altı |
+| Komuttan ilk görevin başlamasına | 10 sn altı |
+| Aynı iş setinin toplam süresi | Office'e göre en az %40 kısa |
+| Görev başına token | Office'e göre en az %30 az |
+| Düzeltme turu oranı (NEEDS WORK) | Ölçülüp raporlanır, her sürümde düşmeli |
+| Arayüz | 60 KB altı, ilk çizim 300 ms altı |
+
 ## 4. Teknik seçimler (önerilen)
 
 | Konu | Seçim | Neden |
 |---|---|---|
 | Dil | Node 24, ESM, JavaScript (JSDoc tipleri) | Office ile aynı, kod taşınabilir |
 | Test | `node --test` | Office'teki 158 testin yapısı korunur |
-| Durum | SQLite (`node:sqlite`) | Pano, geçmiş ve istatistikler JSON dosyalarında büyüyordu |
-| Arayüz | Önce CLI (`fa run "<komut>"`), sonra yerel HTTP API | Ofis ve diğer istemciler aynı API'ye bağlanır |
+| Durum | SQLite (`node:sqlite`), WAL kipi, append-only olay kaydı | Office'te JSON dosyaları 400 KB'a çıktı ve her seferinde baştan yazılıyordu |
+| Zamanlama | DAG zamanlayıcı + motor başına işçi havuzu | Bağımsız işler paralel, bağımlılar sırayla |
+| Arayüz | CLI (`fa run "<komut>"`) + yerel HTTP/SSE + tek dosyalık web arayüzü, Electron yok | Hafif, hızlı, telefondan da açılır |
 | Noesis | MCP istemcisi (`noesis.exe --mcp`) | Zaten kurulu ve bağlı |
 | Claude API | `@anthropic-ai/sdk`, en güncel modeller, `fallbacks` açık | Office'teki gibi |
 
@@ -112,11 +141,11 @@ Her aşama bitince ayrı bir PR açılır, testler geçer, ardından main'e alı
 | 3 | Bilgi katmanı | Noesis okuma/yazma, gizli bilgi filtresi | Görev Noesis bağlamıyla çalışıyor, sonuç arşive yazılıyor |
 | 4 | Uzman havuzu | Katalog + yerel skill uzmanları + profiller | Her alandan bir örnek görev geçiyor |
 | 5 | Git, zamanlama, limitler | worktree, zamanlanmış komut, yedek motor | Limit dolunca iş başka motorla bitiyor |
-| 6 | HTTP API ve Ofis bağlantısı | Yerel API; Ofis'in istemci olarak bağlanması | Ofis görevleri bu çekirdekten izleniyor |
+| 6 | Web arayüzü ve API | Yerel HTTP/SSE API, "Santral" arayüzü (`docs/tasarim/v2`) | Hedefler tablosundaki arayüz ölçütleri tutuyor |
 | 7 | Alan paketleri | Roblox, Godot, içerik, veri, araştırma şablonları | Her paketin örnek akışı belgeli |
 
 ## 6. Açık sorular
 
-1. Ofis bu çekirdeğe mi geçecek, yoksa iki sistem ayrı mı yaşayacak? Öneri: aşama 6'da Ofis istemci olur.
+1. ~~Ofis bu çekirdeğe mi geçecek?~~ Karar (2026-10-28): Proje Office'e benzemeyecek. Kendi arayüzü (Santral) olacak. Office ayrı yaşar.
 2. Benzer projeler `docs/BENZER-PROJELER.md` içinde. Paperclip (MIT) bütçe ve onay kapıları için, hindsight ile codebase-memory-mcp hafıza için aday. Ruflo artık doğrulandı (ruvnet/ruflo, MIT). Öneri: aşama 3’ten önce kısa bir deneme görevi açılsın.
 3. Proje adı ve CLI komutunun adı (`fa`) uygun mu?

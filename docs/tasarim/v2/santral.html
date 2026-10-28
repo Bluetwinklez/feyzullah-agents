@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Santral</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+/* Santral: tek dosya, harici JS yok, yalnız çalışan işler hareket eder. */
+:root {
+  --paper: #f3efe6; --card: #fbf9f4; --ink: #15130f; --ink-2: #4b463d; --mute: #8a8376;
+  --rule: #ddd6c8; --rule-2: #e9e3d7;
+  --claude: #d9730d; --codex: #0e8a74; --agy: #d0432a; --noesis: #6b4fd3;
+  --ok: #2f8a3b; --warn: #c48a00;
+  --serif: 'Instrument Serif', Georgia, serif; --sans: 'Instrument Sans', system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --lane: 52px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #12110e; --card: #1a1814; --ink: #f1ece2; --ink-2: #c4bcae; --mute: #8a8376; --rule: #2e2a24; --rule-2: #24211c;
+  --claude: #f29a3f; --codex: #36c2a6; --agy: #f06a4e; --noesis: #9f88ff; --ok: #6cc477; --warn: #e8b23a; } }
+:root[data-theme="dark"] {
+  --paper: #12110e; --card: #1a1814; --ink: #f1ece2; --ink-2: #c4bcae; --mute: #8a8376; --rule: #2e2a24; --rule-2: #24211c;
+  --claude: #f29a3f; --codex: #36c2a6; --agy: #f06a4e; --noesis: #9f88ff; --ok: #6cc477; --warn: #e8b23a; }
+
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* üst çubuk */
+.top { display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: center; padding: 18px 28px; border-bottom: 1px solid var(--rule); }
+.mark { font: 34px/1 var(--serif); letter-spacing: -.01em; }
+.mark i { color: var(--claude); }
+.palette { display: flex; align-items: center; gap: 12px; max-width: 720px; padding: 11px 14px; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 1px 0 var(--rule-2); }
+.palette input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: 15px var(--sans); outline: none; }
+.palette kbd { font: 11px var(--mono); color: var(--mute); border: 1px solid var(--rule); border-radius: 5px; padding: 2px 6px; }
+.stats { display: flex; gap: 26px; }
+.stat b { display: block; font: 26px/1 var(--serif); }
+.stat span { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .08em; }
+.stat .up { color: var(--ok); font: 11px var(--mono); }
+
+/* gövde */
+.main { display: grid; grid-template-columns: 1fr 360px; min-height: calc(100vh - 77px); }
+.left { min-width: 0; border-right: 1px solid var(--rule); }
+.sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 22px 28px 12px; }
+.sec-h h2 { font: 28px/1 var(--serif); font-weight: 400; }
+.sec-h h2 em { color: var(--mute); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+
+/* zaman çizelgesi */
+.tl-wrap { overflow-x: auto; padding: 0 28px 8px; }
+.tl { position: relative; min-width: 760px; display: grid; grid-template-columns: 190px 1fr; }
+.axis { grid-column: 2; display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--mute); padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.who { display: flex; align-items: center; gap: 10px; height: var(--lane); border-bottom: 1px solid var(--rule-2); padding-right: 12px; }
+.who b { font-weight: 600; font-size: 13px; display: block; line-height: 1.15; }
+.who small { font-size: 11px; color: var(--mute); }
+.glyph { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.glyph svg { width: 18px; height: 18px; }
+.lane { position: relative; height: var(--lane); border-bottom: 1px solid var(--rule-2);
+  background: repeating-linear-gradient(90deg, transparent 0 calc(100%/12 - 1px), var(--rule-2) calc(100%/12 - 1px) calc(100%/12)); }
+.bar { position: absolute; top: 11px; height: 30px; border-radius: 7px; padding: 0 10px; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; color: #fff; background: var(--c); cursor: pointer;
+  transition: transform .12s, box-shadow .12s; }
+.bar:hover, .bar.sel { transform: translateY(-1px); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 40%, transparent), 0 0 0 2px var(--paper), 0 0 0 3.5px var(--c); }
+.bar.wait { background: transparent; color: var(--c); border: 1.5px dashed var(--c); }
+.bar.run { background-image: linear-gradient(115deg, rgba(255,255,255,.18) 25%, transparent 25% 50%, rgba(255,255,255,.18) 50% 75%, transparent 75%);
+  background-size: 18px 18px; animation: slide 1s linear infinite; }
+.bar.check { background: color-mix(in srgb, var(--c) 18%, var(--card)); color: var(--ink); border: 1.5px solid var(--c); }
+.bar .ic { font: 11px var(--mono); opacity: .9; }
+.bar.short { justify-content: center; padding: 0; font-size: 0; }
+.bar.short .ic { font-size: 11px; }
+.bar > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+@keyframes slide { to { background-position: 18px 0 } }
+.gate { position: absolute; top: 17px; width: 18px; height: 18px; transform: translateX(-50%) rotate(45deg); background: var(--warn); border: 2px solid var(--paper); box-shadow: 0 0 0 1.5px var(--warn); cursor: pointer; }
+.now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); pointer-events: none; }
+.now::before { content: 'şimdi'; position: absolute; top: -2px; left: 6px; font: 10px var(--mono); background: var(--ink); color: var(--paper); padding: 1px 5px; border-radius: 3px; }
+svg.deps { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+svg.deps path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 3 3; opacity: .55; }
+
+/* kazanç şeridi */
+.wins { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--rule); margin-top: 18px; }
+.win { padding: 18px 28px; border-right: 1px solid var(--rule); }
+.win:last-child { border: 0; }
+.win b { font: 30px/1 var(--serif); }
+.win p { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+.win small { font: 11px var(--mono); color: var(--mute); }
+
+/* sağ panel */
+.right { display: flex; flex-direction: column; }
+.block { padding: 20px 24px; border-bottom: 1px solid var(--rule); }
+.block h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--mute); margin-bottom: 12px; display: flex; justify-content: space-between; }
+.detail h4 { font: 24px/1.15 var(--serif); font-weight: 400; margin: 8px 0 4px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+.kv dt { color: var(--ink-2); }
+.kv dd { font-family: var(--mono); font-size: 12px; text-align: right; }
+.checks { display: grid; gap: 6px; margin-top: 14px; }
+.ck { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; font-size: 13px; }
+.ck .r { font: 11px var(--mono); }
+.ck.pass .r { color: var(--ok); } .ck.skip .r { color: var(--mute); } .ck.fail .r { color: var(--agy); }
+.gates .g { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px dashed var(--rule); }
+.gates .g:first-of-type { border: 0; padding-top: 0; }
+.gates small { color: var(--mute); font-size: 12px; }
+.gates .acts { grid-row: span 2; display: flex; gap: 6px; align-self: center; }
+.btn { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--rule); font-size: 12px; font-weight: 600; background: var(--card); }
+.btn.go { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn:focus-visible, .bar:focus-visible { outline: 2px solid var(--claude); outline-offset: 2px; }
+.ctx li { list-style: none; display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 13px; border-top: 1px solid var(--rule-2); }
+.ctx li:first-child { border: 0; }
+.ctx ul { padding: 0; }
+.ctx .hit { font: 11px var(--mono); color: var(--noesis); white-space: nowrap; }
+.ctx .x { color: var(--mute); text-decoration: line-through; }
+
+@media (max-width: 1080px) { .main { grid-template-columns: 1fr; } .left { border-right: 0; } .stats { display: none; } .wins { grid-template-columns: repeat(2, 1fr); } .win:nth-child(2) { border-right: 0; } .win:nth-child(-n+2) { border-bottom: 1px solid var(--rule); } }
+@media (max-width: 560px) { .top { grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; } .sec-h, .tl-wrap, .win, .block { padding-left: 16px; padding-right: 16px; } .sec-h { flex-direction: column; align-items: flex-start; } .wins { grid-template-columns: 1fr; } .win { border-right: 0; border-bottom: 1px solid var(--rule); } }
+@media (prefers-reduced-motion: reduce) { .bar.run { animation: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="mark">santral<i>.</i></div>
+  <label class="palette">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    <input aria-label="Komut" value="basketbol-tahmin için NBL sezon raporu hazırla, grafikleri ekle">
+    <kbd>Ctrl K</kbd>
+  </label>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="main">
+  <section class="left">
+    <div class="sec-h">
+      <h2>NBL sezon raporu <em>· 6 görev, 4 paralel</em></h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="tl-wrap"><div class="tl" id="tl"></div></div>
+    <div class="wins" id="wins"></div>
+  </section>
+
+  <aside class="right">
+    <div class="block detail" id="detail"></div>
+    <div class="block gates" id="gates"></div>
+    <div class="block ctx" id="ctx"></div>
+  </aside>
+</div>
+
+<script>
+const ENG = { claude: ['Claude', 'var(--claude)'], codex: ['Codex', 'var(--codex)'], agy: ['agy', 'var(--agy)'], noesis: ['Noesis', 'var(--noesis)'] };
+// Rol simgeleri: 24×24, tek çizgi. Piksel karakter yok, ölçeklenir.
+const G = {
+  prompt: '<path d="M4 12h12M12 6l6 6-6 6"/>',
+  yonetici: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  arsiv: '<path d="M12 4v16M5 8l14 8M19 8L5 16"/>',
+  veri: '<path d="M6 19V11M12 19V5M18 19v-6"/>',
+  arastirma: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l5 5"/>',
+  yazar: '<path d="M5 7h14M5 12h14M5 17h9"/>',
+  tasarim: '<path d="M12 4l8 15H4z"/>',
+  kontrol: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/>',
+  kod: '<path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/>',
+};
+const glyph = (k, c) => `<span class="glyph" style="--c:${c}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${G[k]}</svg></span>`;
+
+const LANES = [
+  ['prompt', 'Prompt Master', 'claude', 'istek → görev'],
+  ['arsiv', 'Noesis', 'noesis', 'önbellek 3/3'],
+  ['yonetici', 'Yönetici', 'claude', 'DAG kurdu'],
+  ['veri', 'Veri Analisti', 'codex', 'işçi #1'],
+  ['arastirma', 'Araştırmacı', 'agy', 'işçi #2'],
+  ['tasarim', 'Grafikçi', 'codex', 'işçi #3'],
+  ['yazar', 'Yazar', 'agy', 'işçi #4'],
+  ['kontrol', 'Kontrol', 'codex', 'önce makine'],
+];
+// dakika cinsinden (0–12), deps: görev id
+const TASKS = [
+  { id: 't0', lane: 'prompt', s: 0, e: .4, t: 'Net görev', st: 'done' },
+  { id: 't1', lane: 'arsiv', s: .4, e: .6, t: '3 not', st: 'done', deps: ['t0'] },
+  { id: 't2', lane: 'yonetici', s: .6, e: 1.4, t: 'Plan + DAG', st: 'done', deps: ['t1'] },
+  { id: 't3', lane: 'veri', s: 1.4, e: 5.2, t: 'NBL verisi çek, temizle', st: 'done', deps: ['t2'] },
+  { id: 't4', lane: 'arastirma', s: 1.4, e: 4.1, t: 'Sakatlık kaynakları', st: 'done', deps: ['t2'] },
+  { id: 't5', lane: 'yazar', s: 1.4, e: 3.2, t: 'Rapor iskeleti', st: 'done', deps: ['t2'] },
+  { id: 'c3', lane: 'kontrol', s: 5.2, e: 5.6, t: 'test ✓', st: 'check', deps: ['t3'] },
+  { id: 't6', lane: 'tasarim', s: 5.6, e: 8.4, t: 'Elo + eksik oyuncu grafikleri', st: 'run', deps: ['c3'] },
+  { id: 't7', lane: 'yazar', s: 5.6, e: 8.1, t: 'Bulguları yaz', st: 'run', deps: ['c3', 't4'] },
+  { id: 'c4', lane: 'kontrol', s: 8.6, e: 9.4, t: 'Bütünleşme', st: 'wait', deps: ['t6', 't7'] },
+];
+const GATES = [{ lane: 'tasarim', at: 7.2, t: 'Krea · ≈10 kredi' }];
+const NOW = 7.0, SPAN = 12;
+
+const $ = (id) => document.getElementById(id);
+$('stats').innerHTML = [
+  ['4/6', 'paralel işçi'], ['7:00', 'geçen süre', '−43%'], ['38k', 'token', '−31%'], ['0', 'düzeltme turu'],
+].map(([b, s, u]) => `<div class="stat"><b class="mono">${b}</b><span>${s}</span>${u ? ` <span class="up">${u}</span>` : ''}</div>`).join('');
+$('legend').innerHTML = Object.values(ENG).map(([n, c]) => `<span style="--c:${c}">${n}</span>`).join('');
+
+const pct = (m) => `${(m / SPAN) * 100}%`;
+let html = '<div></div><div class="axis">' + Array.from({ length: 7 }, (_, i) => `<span>10:${String(40 + i * 2).padStart(2, '0')}</span>`).join('') + '</div>';
+for (const [k, name, eng, sub] of LANES) {
+  const c = ENG[eng][1];
+  html += `<div class="who">${glyph(k, c)}<div><b>${name}</b><small>${sub}</small></div></div><div class="lane" data-lane="${k}">`;
+  for (const t of TASKS.filter((x) => x.lane === k)) {
+    const tc = ENG[LANES.find((l) => l[0] === t.lane)[2]][1];
+    const ic = { done: '✓', run: '●', wait: '…', check: '⚙' }[t.st] ?? '';
+    // 1 dakikadan kısa çubukta yalnız simge; metin title'da
+    html += `<button class="bar ${t.st}${t.e - t.s < 1 ? ' short' : ''}" id="${t.id}" style="--c:${tc};left:${pct(t.s)};width:${pct(t.e - t.s)}" title="${t.t}"><span class="ic">${ic}</span><span>${t.t}</span></button>`;
+  }
+  for (const g of GATES.filter((x) => x.lane === k)) html += `<span class="gate" style="left:${pct(g.at)}" title="Onay: ${g.t}"></span>`;
+  html += '</div>';
+}
+html += `<div class="now" style="left:calc(190px + (100% - 190px) * ${NOW / SPAN})"></div><svg class="deps" id="deps"></svg>`;
+$('tl').innerHTML = html;
+
+// Bağımlılık çizgileri: yalnız yerleşim değişince yeniden hesaplanır.
+function drawDeps() {
+  const box = $('tl').getBoundingClientRect();
+  let d = '';
+  for (const t of TASKS) for (const dep of t.deps ?? []) {
+    const a = $(dep).getBoundingClientRect(), b = $(t.id).getBoundingClientRect();
+    const x1 = a.right - box.left, y1 = a.top + a.height / 2 - box.top, x2 = b.left - box.left, y2 = b.top + b.height / 2 - box.top;
+    const mx = x1 + Math.max(8, (x2 - x1) / 2);
+    d += `M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2 - 2} ${y2}`;
+  }
+  $('deps').innerHTML = `<path d="${d}"/>`;
+}
+new ResizeObserver(drawDeps).observe($('tl'));
+
+const DETAIL = {
+  t6: { who: 'Grafikçi · Codex', title: 'Elo ve eksik oyuncu grafikleri', kv: [['Dal', 'fa/nbl-rapor/grafik'], ['Worktree', 'işçi #3'], ['Token', '9.8k'], ['Önbellek', 'prompt %71']],
+    checks: [['Dosyalar var', 'pass', '3/3'], ['npm test', 'pass', '24/24'], ['lint', 'pass', '0 uyarı'], ['LLM incelemesi', 'skip', 'gerek yok']] },
+  t3: { who: 'Veri Analisti · Codex', title: 'NBL verisi çek ve temizle', kv: [['Dal', 'fa/nbl-rapor/veri'], ['Süre', '3:48'], ['Token', '12.1k'], ['Satır', '4.812 maç']],
+    checks: [['Şema', 'pass', 'uyumlu'], ['pytest', 'pass', '41/41'], ['LLM incelemesi', 'skip', 'gerek yok']] },
+  c4: { who: 'Kontrol · Codex', title: 'Bütünleşme kontrolü', kv: [['Bekliyor', 't6, t7'], ['Tahmini', '0:48']],
+    checks: [['Rapor + grafik bağları', 'skip', 'sırada'], ['Tam test', 'skip', 'sırada'], ['LLM incelemesi', 'skip', 'yalnız fark varsa']] },
+};
+function select(id) {
+  const d = DETAIL[id] ?? DETAIL.t6;
+  document.querySelectorAll('.bar.sel').forEach((b) => b.classList.remove('sel'));
+  $(DETAIL[id] ? id : 't6').classList.add('sel');
+  $('detail').innerHTML = `<h3>Seçili görev <span class="mono">${DETAIL[id] ? id : 't6'}</span></h3><small style="color:var(--mute)">${d.who}</small><h4>${d.title}</h4>
+    <dl class="kv">${d.kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <div class="checks">${d.checks.map(([n, s, r]) => `<div class="ck ${s}"><span>${n}</span><span class="r">${r}</span></div>`).join('')}</div>`;
+}
+$('tl').addEventListener('click', (e) => { const b = e.target.closest('.bar'); if (b) select(b.id); });
+select('t6');
+
+$('gates').innerHTML = `<h3>Onay kapıları <span class="mono">2</span></h3>` + [
+  ['Krea ile 3 grafik', 'Grafikçi · ≈10 kredi · bakiye ~32'], ['fa/nbl-rapor → main', 'Bütünleşme geçince'],
+].map(([b, s]) => `<div class="g"><b>${b}</b><div class="acts"><button class="btn go">Onayla</button><button class="btn">Reddet</button></div><small>${s}</small></div>`).join('');
+
+$('ctx').innerHTML = `<h3>Noesis bağlamı <span class="mono">önbellek 3/3</span></h3><ul>${[
+  ['Basketbol tahmin: skor modeli', 'önbellek'], ['nba_api eksik oyuncu', 'önbellek'], ['NBL veri kaynakları', 'önbellek'], ['jev-ultrafast', 'elendi: risk'],
+].map(([t, h]) => `<li><span class="${h.startsWith('elendi') ? 'x' : ''}">${t}</span><span class="hit">${h}</span></li>`).join('')}</ul>`;
+
+$('wins').innerHTML = [
+  ['−43%', 'toplam süre', 'DAG: 4 iş paralel, sıra yok'],
+  ['−31%', 'token', 'makine kontrolü LLM çağrısını atladı'],
+  ['3/3', 'bağlam önbellekten', 'Noesis tekrar aranmadı'],
+  ['0.2 sn', 'arayüz açılışı', 'tek dosya, SSE ile yalnız fark'],
+].map(([b, s, p]) => `<div class="win"><b class="mono">${b}</b> <small>${s}</small><p>${p}</p></div>`).join('');
+</script>
+</body>
+</html>
