@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+/* Gece vardiyası: espresso zemin, CRT parıltısı, motor renkleri sabit. */
+:root {
+  --ink: #14110f;
+  --ink-2: #1c1815;
+  --ink-3: #26201b;
+  --line: #3a3029;
+  --paper: #f3e9d8;
+  --muted: #a8998a;
+  --claude: #ffb547;
+  --codex: #3fd2b5;
+  --agy: #ff7a5c;
+  --noesis: #b79bff;
+  --ok: #9bd36a;
+  --warn: #ffcc4d;
+  --bad: #ff5a5a;
+  --px: 'Pixelify Sans', monospace; /* Silkscreen'de ş, ı, İ yok */
+  --sans: 'Bricolage Grotesque', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html { background: var(--ink); }
+body {
+  min-height: 100vh;
+  color: var(--paper);
+  font: 15px/1.5 var(--sans);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #3a2414 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #10302b 0%, transparent 55%),
+    var(--ink);
+}
+/* tarama çizgileri + gren */
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px);
+  mix-blend-mode: screen;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 51; opacity: .07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.px { font-family: var(--px); letter-spacing: .02em; }
+.mono { font-family: var(--mono); }
+.sprite { image-rendering: pixelated; display: block; }
+
+.panel {
+  background: linear-gradient(180deg, var(--ink-2), #181412);
+  border: 2px solid var(--line);
+  box-shadow: 4px 4px 0 #0a0807, inset 0 1px 0 rgba(255,255,255,.04);
+  border-radius: 3px;
+}
+.panel-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 2px dashed var(--line);
+  font-family: var(--px); font-size: 12px; text-transform: uppercase; color: var(--muted);
+}
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 11px var(--mono); padding: 2px 8px; border-radius: 2px;
+  border: 1px solid currentColor; white-space: nowrap;
+}
+.chip::before { content: ''; width: 6px; height: 6px; background: currentColor; }
+.e-claude { color: var(--claude); } .e-codex { color: var(--codex); }
+.e-agy { color: var(--agy); } .e-noesis { color: var(--noesis); }
+
+/* durum animasyonları */
+@keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6%) } }
+@keyframes blink { 0%,90%,100% { opacity: 1 } 95% { opacity: .2 } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+.working .sprite { animation: bob .7s steps(2) infinite; }
+.waiting .sprite { animation: blink 1.2s infinite; }
+.resting .sprite { filter: saturate(.4) brightness(.8); }
+.reveal { animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
