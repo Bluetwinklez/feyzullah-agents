@@ -160,4 +160,4 @@ Paperclip'in bütün özelliklerinin bu aşamalara nasıl dağıldığı: [`OZEL
 
 1. ~~Ofis bu çekirdeğe mi geçecek?~~ Karar (2026-10-28): Proje Office'e benzemeyecek. Kendi arayüzü (Santral) olacak. Office ayrı yaşar.
 2. Benzer projeler `docs/BENZER-PROJELER.md` içinde. Paperclip (MIT) bütçe ve onay kapıları için, hindsight ile codebase-memory-mcp hafıza için aday. Ruflo artık doğrulandı (ruvnet/ruflo, MIT). Öneri: aşama 3’ten önce kısa bir deneme görevi açılsın.
-3. Proje adı ve CLI komutunun adı (`fa`) uygun mu?
+3. ~~Proje adı ve CLI komutunun adı (`fa`) uygun mu?~~ Karar (2026-10-28): `fa` kalıyor.
