@@ -118,6 +118,8 @@ Göç 1'deki tablolar:
 - `budgets(id PK, scope /*'global'|'engine'|'agent'*/, scope_id, window /*'day'|'month'*/, limit_tokens, warn_percent DEFAULT 80, hard_stop DEFAULT 1)`
 - `meta(key PK, value)`
 
+Göç 1 `default` çalışma alanını da ekler (`kind='generic'`, `root=NULL`). `tasks.workspace_id` yabancı anahtar olduğu için bu satır olmadan `createTask` hata verir. `fa init` bu satırın `root` ve `kind` alanlarını günceller.
+
 - [ ] **Step 1: Failing tests**
   - `'şema kurulur ve sürüm 1'`: 11 tablo da var.
   - `'dosya veritabanı WAL ve busy_timeout 5000, ikinci açılış göç tekrarlamaz'`:
@@ -179,6 +181,7 @@ Göç 1'deki tablolar:
     - Kurtarılan sayıyı döner. Açılışta bir kez çağrılır.
   - `getSession(db, {agentKey, engine, taskKey}): string|null`, `saveSession(db, {...}, sessionId): void`
   - `getTask(db, id)`
+  - `blockTask(db, taskId, {retryAt, reason}): void`. Claim edilmemiş görevi `blocked` yapar, `retry_at` yazar, `task.blocked` olayı ekler. Bütçe engeli için kullanılır.
 - Olaylar: `task.created`, `task.claimed`, `run.finished`, `task.done`, `task.failed`, `task.blocked`, `run.recovered`.
 
 - [ ] **Step 1: Failing tests**
@@ -215,7 +218,8 @@ Göç 1'deki tablolar:
     - `ParsedLine = {sessionId?, text?, final?, error?, usage?, rate?}`. `usage` Global Constraints'teki biçimdedir.
     - Bozuk ya da boş satırda `null` döner, Ofis ile aynı. Kurallar `cli.js:32-64` ile aynıdır.
     - Bilinçli farklar:
-      - **Codex:** `turn.completed.usage` normalize edilir: `input = input_tokens - (cached_input_tokens ?? 0)`, `cachedInput = cached_input_tokens`.
+      - **Codex:** Birden çok `agent_message` gelebilir; adaptör bunları Ofis'teki gibi `
+` ile birleştirir. Birden çok `turn.completed` gelirse kullanım toplanır. `turn.completed.usage` normalize edilir: `input = input_tokens - (cached_input_tokens ?? 0)`, `cachedInput = cached_input_tokens`.
       - **Claude:** `result` satırında `input = input_tokens`, `cachedInput = cache_read_input_tokens`, `cacheWrite = cache_creation_input_tokens`. `is_error` ise `{error, usage}` döner.
       - **antigravity:** `result.status !== 'SUCCESS'` ya da boş `response` olursa `{error}` döner.
   - `cliArgs(engine, {cwd, persona?, personaFile?, prompt, resumeId?, allowedTools=[], network=false}): string[]`. **`cli.js:17-29` birebir taşınır:**
@@ -223,6 +227,16 @@ Göç 1'deki tablolar:
     - **antigravity:** `-p <persona+görev> --output-format stream-json --sandbox --mode accept-edits [--conversation <id>]`
     - **claude:** `-p --output-format stream-json --verbose --permission-mode acceptEdits [--append-system-prompt <p> | --append-system-prompt-file <f>] [--resume <id>] [--allowedTools …]`. Prompt stdin'den verilir.
   - `promptVia(engine): 'stdin'|'argv'`. claude ve codex → `stdin`, antigravity → `argv`.
+  - `stdinText(engine, {persona, prompt, resumeId}): string|null`. `cli.js:131` ile aynı:
+    - claude → `prompt` (persona `--append-system-prompt` ile gider)
+    - codex → `resumeId` varsa `prompt`, yoksa `withPersona(persona, prompt)`
+    - antigravity → `null` (stdin hemen kapatılır)
+    - `withPersona = persona ? `${persona}
+
+---
+
+Görev:
+${prompt}` : prompt`. antigravity'de `resumeId` varsa persona eklenmez.
   - `findBins(): {claude?, codex?, antigravity?}`. `cli.js:160-198` taşınır. Bakılan yerler:
     - PATH'teki `.exe` dosyaları
     - claude için Roaming, Claude-Data ve MSIX Packages altındaki `claude.exe`
@@ -265,7 +279,8 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
 - `costs.js`:
   - `recordUsage(db, {runId, agentId?, engine, model?, usage}): void`
   - `setBudget(db, {id, scope, scopeId?, window, limitTokens, warnPercent=80, hardStop=true})`
-  - `budgetStatus(db, {engine?, agentId?, at=now()}): {state:'ok'|'warn'|'stop', used, limit, budgetId, unknownRuns:number}`
+  - `budgetStatus(db, {engine?, agentId?, at=now()}): {state:'ok'|'warn'|'stop', used, limit, budgetId, unknownRuns:number, resetAt:number|null}`
+    - Pencere yerel saatle: `day` bugünün 00:00'ından başlar, `resetAt` yarın 00:00. `month` ayın 1'inden başlar, `resetAt` gelecek ayın 1'i.
     - Sonuç: uygun bütçelerin en kötüsü.
     - `used = input + cacheWrite + output`. `cachedInput` sayılmaz.
     - `unknownRuns`: penceredeki `known=0` kayıt sayısı. agy bu sayede görünür olur.
@@ -273,7 +288,9 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
   - `detectLimit({error?, rate?, text?}): {limited:boolean, retryAt:number|null}`
     - `LIMIT_RE` Ofis `runner.js:57`'den taşınır.
     - claude `rate_limit_event.rate_limit_info.resetsAt` (saniye) ms'e çevrilir.
-    - Saat yoksa `retryAt = now() + 15 dk`.
+    - Metin yolu Ofis `runner.js:57-71` ile aynı: `LIMIT_RE` eşleşirse `limitUntil(msg)` "try again at 7:52 AM" saatini okur (geçtiyse ertesi gün), saat yoksa `now() + 60 dk`.
+    - `rate` yalnız `status === 'rejected'` ise limittir. Ofis'te `rate_limit_event` her istekte gelir ve çoğu `allowed`; bunu limit saymak her claude görevini durdururdu.
+  - `limitUntil(msg, now): number` dışa açılır.
 
 - [ ] **Step 1: Failing tests**
   - `'%80 uyarı, %100 durdurma'`: Değerler önceki planla aynı; `cacheWrite` kullanılır.
@@ -283,7 +300,9 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
   - `'hardStop kapalıysa sınır aşılsa da warn'`
   - `'bütçe yoksa ok ve limit null'`
   - `'detectLimit usage limit metnini yakalar'`: Ofis'teki limit mesajı örnekleri, `turn.failed` metni ve `is_error` metni.
-  - `'rate resetsAt saatini kullanır'`
+  - `'rate resetsAt saatini kullanır, allowed olay limit değildir'`
+  - `'try again at saati okunur, geçtiyse ertesi gün'`
+  - `'günlük bütçe resetAt ertesi gece yarısı'`
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5: Commit** — `feat(core): kullanım, token bütçesi, limit algılama`
 
@@ -303,12 +322,12 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
       - `krea` → `mcp__krea-ai__*`
       - `godot` → Godot komut kalıpları
       - `roblox` → `rojo`, `selene`, `stylua`, `lune`, `rokit` komut kalıpları
-  - `decide(action): 'allow'|'ask'|'deny'`
+  - `decide(action): 'allow'|'ask'|'deny'`. Listede olmayan eylem `ask` döner (güvenli varsayılan).
     - `ask`: `git.push`, `git.merge`, `fs.delete`, `credits.spend`, `external.send`, `roblox.publish`, `roblox.cloud_exec`, `roblox.insert_asset`
     - `deny`: `secrets.read`, `permissions.bypass`
 - **`checks.js`:**
   - `runChecks(cwd, commands, {timeoutMs=120000, env?}?): Promise<{ok, results:{cmd, code, timedOut, ms, tail}[], needsLlmReview}>`
-    - Komut `cmd.exe /d /s /c "chcp 65001>nul & <cmd>"` ile çalışır (Windows'ta UTF-8 çıktı).
+    - Komut `cmd.exe /d /s /c "chcp 65001>nul & <cmd>"` ile çalışır (Windows'ta UTF-8 çıktı). `windowsVerbatimArguments: true` gerekir, yoksa Node tırnakları bozar. Windows dışında `sh -c`.
     - Zaman aşımında `taskkill /T /F` çalışır, `code:null` ve `timedOut:true` yazılır.
     - İlk hatada durur.
 - **`adapter.js`:**
@@ -320,12 +339,12 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
       - antigravity'de persona + görev 24.000 karakteri aşarsa `<cwd>/.fa-gorev.md` dosyasına yazılır, kısa bir yönlendirme gider, dosya iş bitince silinir.
       - claude persona'sı 24.000 karakteri aşarsa geçici dosyaya yazılır ve `--append-system-prompt-file` ile verilir.
     - Çıktı okuma: stdout `StringDecoder('utf8')` ile satırlara bölünür ve her satır `parseLine`'a verilir. Ayrıca `last_output_at` güncellenir.
-    - İptal (`signal`) ya da zaman aşımında Windows'ta `taskkill /pid /T /F`, diğer sistemlerde `kill(-pid)` çalışır.
-    - Çıkış kodu 0 değilse hata atılmaz; sonuçta döner.
+    - İptal (`signal`) ya da zaman aşımında Windows'ta `taskkill /pid /T /F`, diğer sistemlerde `kill(-pid)` çalışır (süreç `detached` başlatılır).
+    - Çıkış kodu 0 değilse hata atılmaz; sonuçta döner. Başlatılamazsa (`error` olayı) `{error:'başlatılamadı: …'}` döner.
 
 - [ ] **Step 1: Failing tests**
   - `'reverse yeteneği rea araçlarını ekler, codex boş liste alır'`
-  - `'roblox.publish ask, secrets.read deny'`
+  - `'roblox.publish ask, secrets.read deny, bilinmeyen eylem ask'`
   - `'runChecks ilk hatada durur'`
   - `'zaman aşımı timedOut true ve code null'`
   - `'runChecks Türkçe çıktıyı bozmaz'`: `node -e "console.log('şğüİı')"` → tail içinde aynen.
@@ -345,15 +364,17 @@ Fixture: Her motor için 5–6 satır: oturum, metin, araç, sonuç ve kullanım
 
 Döngü, her hazır görev için:
 1. Motor seçilir: `task.engine ?? 'codex'`.
-2. `budgetStatus` `stop` dönerse görev `blocked` olur, `budget.blocked` olayı yazılır.
+2. `budgetStatus` `stop` dönerse `blockTask(…, {retryAt: resetAt})` çalışır ve `budget.blocked` olayı yazılır. `retry_at` boş kalsaydı görev sonsuza dek beklerdi.
 3. `claimTask` ile görev alınır.
 4. `getSession` ile oturum varsa `resumeId` olarak verilir.
 5. `execute` çalışır, sonra `recordUsage`.
-6. Run durumu belirlenir:
-   - `exitCode===0 && !error && final != null` → `succeeded`.
-   - `detectLimit` sınır bulursa → `limited` ve `retryAt`. `fallback[engine]` içinde limiti olmayan motor varsa görev **aynı turda** o motorla yeniden kuyruğa girer (Ofis'teki yedek motor davranışı).
+6. Run durumu belirlenir (sıra önemli):
    - `timedOut` → `timed_out`.
+   - `!error && final != null` → `succeeded`. Ofis gibi: çıkış kodu 0 değilse ama final geldiyse iş bitmiş sayılır.
+   - `detectLimit` sınır bulursa → `limited` ve `retryAt`. `fallback[engine]` içinde limiti olmayan motor varsa görev **aynı turda** o motorla yeniden kuyruğa girer (Ofis'teki yedek motor davranışı).
    - Diğer durumlar → `failed`.
+
+Motor kapanma kaydı: limite takılan motor `down[engine] = retryAt` olur ve `meta.engine_down` içine yazılır; sonraki `fa run` de o saate kadar bu motoru atlar. Yedek motor yalnız `adapters` içinde varsa denenir (Ofis'te `bins[e]` kontrolü). Oturum `task_sessions` anahtarında motor olduğu için yedek motora eski oturum gitmez.
 7. Oturum kaydedilir.
 
 Resume hatası (bilinmeyen oturum) olursa oturum silinir ve görev bir kez oturumsuz denenir (Paperclip `isClaudeUnknownSessionError`).
@@ -367,6 +388,8 @@ Resume hatası (bilinmeyen oturum) olursa oturum silinir ve görev bir kez oturu
   - `'bütçe dolu motor blocked'`
   - `'ikinci çalıştırmada görev oturumu resumeId olarak gider'`
   - `'bilinmeyen oturum hatasında oturumsuz bir kez yeniden dener'`
+  - `'kapalı motor sonraki çalıştırmada atlanır'`
+  - `'bütçe engeli retry_at olarak pencere sonunu yazar'`
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5: Commit** — `feat(core): DAG zamanlayıcı, yedek motor, görev başına oturum`
 
@@ -378,7 +401,7 @@ Resume hatası (bilinmeyen oturum) olursa oturum silinir ve görev bir kez oturu
 - Test `test/cli.test.js`.
 
 **Interfaces:**
-- `main(argv, {dbPath?, stdout?}): Promise<number>`. Açılışta `recoverStale` çağrılır. Komutlar:
+- `main(argv, {dbPath?, stdout?, cwd?}): Promise<number>`. Veritabanı yolu: `dbPath` ?? `FA_DB` ortamı ?? `<cwd>/.feyzullah-agents/fa.db` (dizin `.gitignore`'da). Açılışta `recoverStale` çağrılır. Komutlar:
   - `fa init [--kind generic|roblox]`
   - `fa add "<başlık>" [--engine] [--after <id>]… [--prompt-file <f>]`
   - `fa run [--parallel codex=3,claude=1]`
