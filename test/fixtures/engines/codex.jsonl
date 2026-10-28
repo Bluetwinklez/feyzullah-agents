@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"22222222-2222-4222-8222-222222222222"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"i0","type":"command_execution","command":"dir","exit_code":0}}
+{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"Tamam."}}
+{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":50}}
