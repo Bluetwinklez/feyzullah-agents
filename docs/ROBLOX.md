@@ -9,7 +9,7 @@ feyzullah-agents'ın ilk alan paketi Roblox. Amaç: Ofis'le yürütülen `roblox
   - Başsız testler: `tests/luau-runner.mjs` + `build/luau-0.743/luau.exe`, `tests/run-*.mjs`. Kanıtlar `tests/kanit/` altında.
   - `docs/uretim-sirasi.md`: 12 aşamalı kapı tablosu
   - `tests/studio-checklist.md`: Studio'da elle yapılacak kontroller
-  - Remote yok.
+  - Remote: özel repo `Bluetwinklez/roblox-sokak-oyunu`. 28 Ekim 2026'da main ve bütün `ofis/*` dalları yedeklendi.
 - **Durum** (bellek, 2026-10-21): 8. adımdan (Araç) sonra **durduruldu**. 9. adım (Çatışma) kullanıcı istemeden gönderilmeyecek. İçe aktarmada bu durum korunur.
 - **Noesis:** "Roblox" kök sayfası (`0108e2a6-…`) ve 7 alt sayfası. İçerik: araç zinciri, kütüphaneler, MCP'ler, Open Cloud, asset'ler, önerilmeyenler.
 - **Skill'ler:** `~/.claude/skills` ve `~/.codex/skills` altında 28 `roblox-*` skill.
@@ -29,9 +29,12 @@ feyzullah-agents'ın ilk alan paketi Roblox. Amaç: Ofis'le yürütülen `roblox
 | 6. Motor içi test | **rocale-cli** (resmi, MIT) + Jest-Lua | `rocale-cli run …` | Open Cloud anahtarı, **test place** | Birleştirmeden önce, **onaylı** |
 | 7. Canlı oynatma | Studio'nun gömülü MCP'si | `start_stop_play`, `get_console_output`, `screen_capture` | Açık Studio | Elle ya da onaylı |
 
-1–4 arası katmanlar bugün de makinede çalışıyor. 5 ve 6 için yeni kurulum ve anahtar gerekir. 7 ise Studio'nun kurulu ve açık olmasını ister.
+1–4 arası katmanlar bugün de makinede çalışıyor. 5 ve 6 için yeni kurulum ve anahtar gerekir.
 
-Bir çelişki var: README "Studio yok" diyor, masaüstünde ise kısayolu duruyor. Bu A7'de doğrulanacak. O zamana kadar `studio-checklist.md` deseni korunur: yapılamayan kontrol "elle yapılacak" diye karta yazılır.
+Studio bu makinede kurulu (kullanıcı onayı, 28 Ekim 2026). Projenin README'sindeki "Studio yok" notu eskimiş. Bu yüzden 7. katman (Studio MCP ile canlı oynatma) A7'den **A5'e** çekildi:
+- Studio açıksa birleştirme kapısında oynatma testi yapılır, konsol hatası ve ekran görüntüsü kanıt olarak kaydedilir.
+- Studio kapalıysa kontrol `studio-checklist.md` desenine düşer ve "elle yapılacak" olarak işaretlenir.
+- Bağlanmadan önce MCP'nin Assistant → Manage MCP Servers'tan açılması kullanıcıya bırakılır.
 
 ## Roller ve motorlar
 
@@ -80,7 +83,7 @@ Bellekteki kural koda dönüşür:
   - obfuscated 6xvl/robloxstudio-mcp
   - ZeroScript (tarayıcı köprüsü, GPL)
   - lisansı olmayan forge-context-engine ve RobloxForge-Intelligence
-- **Yedek:** Projede remote yok. Her birleştirmeden önce yerel etiket ve worktree korunur. Uzak yedek (özel GitHub reposu) kullanıcı onayıyla açılır.
+- **Yedek:** Özel repo `Bluetwinklez/roblox-sokak-oyunu`. Repo özel kalır, herkese açık yapılmaz. Ajanların push'u yine `git.push` onayına tabidir.
 
 ## Araç tablosu
 
@@ -106,6 +109,6 @@ Bellekteki kural koda dönüşür:
 | A2 | `uretim-sirasi.md` → hedef ve görev zinciri. Kapı satırları kabul ölçütü olur. Durdurulmuş durum korunur |
 | A3 | Noesis Roblox kök sayfası ve creator-docs proje bilgi kaynağı olur. Kütüphane kartları FTS önbelleğine girer |
 | A4 | Yukarıdaki rol tablosu `agents/roblox/*.md` olarak yazılır, 28 skill bağlanır |
-| A5 | Doğrulama katmanları 1–4 birleştirme kapısında çalışır. Autopilot (ff-only) ve engelli liste devreye girer |
+| A5 | Doğrulama katmanları 1–4 ve Studio açıksa 7 (canlı oynatma) birleştirme kapısında çalışır. Autopilot (ff-only) ve engelli liste devreye girer |
 | A6 | Santral'da Roblox paneli: aşama tablosu, kapı sonuçları, Studio kontrol listesi |
-| A7 | rocale-cli ve test place (anahtar kullanıcıdan, onaylı). İsteğe bağlı Studio MCP adaptörü. Mantle ile onaylı yayın |
+| A7 | rocale-cli ve test place (anahtar kullanıcıdan, onaylı). Mantle ile onaylı yayın |
