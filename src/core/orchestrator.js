@@ -10,6 +10,7 @@ import { append } from './events.js';
 import { detectLimit } from './limits.js';
 import { runReady } from './scheduler.js';
 import { addDependency, closeReview, createTask, getTask, reopenTask } from './tasks.js';
+import { lessonPrompt, parseLesson } from '../knowledge/noesis.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} Db */
 /** @typedef {(i: {prompt: string, persona?: string|null, engine?: string, cwd?: string}) => Promise<string>} Llm */
@@ -70,11 +71,13 @@ export async function planGoal({ db, goalId, llm, agents = [], knowledge = '', d
   const created = tx(db, () => {
     const byKey = new Map();
     for (const t of plan.tasks) {
+      // Bilgi arşivinden bağlam her göreve eklenir: uzman yöneticinin konuşmasını görmez.
+      const prompt = knowledge ? `${t.prompt}\n\n---\nBilgi arşivinden ilgili notlar (⚠ işaretli araçları önce doğrula ya da kullanma):\n${knowledge.slice(0, 2500)}` : t.prompt;
       const task = createTask(db, {
-        title: t.title, prompt: t.prompt, engine: t.engine, assigneeAgentId: t.agent, goalId, workspaceId: goal.workspace_id, status,
+        title: t.title, prompt, engine: t.engine, assigneeAgentId: t.agent, goalId, workspaceId: goal.workspace_id, status,
         needsReview: t.review, checks: t.checks, planKey: t.key,
       });
-      saveDocument(db, { entity: 'task', entityId: task.id, name: 'talimat', body: t.prompt, author: 'manager' });
+      saveDocument(db, { entity: 'task', entityId: task.id, name: 'talimat', body: prompt, author: 'manager' });
       byKey.set(t.key, task.id);
     }
     for (const t of plan.tasks) for (const a of t.after) addDependency(db, byKey.get(t.key), byKey.get(a));
@@ -154,7 +157,7 @@ async function handleReview({ db, task, llm, cwd, maxRounds }) {
 }
 
 /** Görevleri bitmiş hedefleri kapatır: hedef kontrolleri (bütünleşme), rapor, durum. */
-async function finalizeGoals({ db, llm, cwd, goalId = null }) {
+async function finalizeGoals({ db, llm, cwd, goalId = null, knowledge = null, lessonParentId = null }) {
   const goals = goalId ? [getGoal(db, goalId)].filter((g) => g?.status === 'active') : db.prepare("SELECT * FROM goals WHERE status = 'active'").all();
   const out = [];
   for (const goal of goals) {
@@ -173,16 +176,27 @@ async function finalizeGoals({ db, llm, cwd, goalId = null }) {
     saveDocument(db, { entity: 'goal', entityId: goal.id, name: 'rapor', body: report, author: 'manager' });
     const ok = !p.failed && !p.cancelled && (!integration || integration.ok);
     setGoalStatus(db, goal.id, ok ? 'done' : 'failed');
-    out.push({ goalId: goal.id, status: ok ? 'done' : 'failed', report });
+    let lesson = null;
+    if (ok && knowledge) {
+      // "Ne öğrendik": kalıcı değeri varsa Noesis'e yeni sayfa (gizli bilgi filtresinden geçer).
+      try {
+        const parsed = parseLesson(await llm({ prompt: lessonPrompt(goal, report), engine: 'claude', cwd }));
+        if (parsed) lesson = await knowledge.writeLesson({ ...parsed, parentId: lessonParentId });
+      } catch (err) {
+        append(db, { actor: 'knowledge', type: 'knowledge.write_failed', entity: 'goal', entityId: goal.id, data: { error: err.message } });
+      }
+    }
+    out.push({ goalId: goal.id, status: ok ? 'done' : 'failed', report, lesson });
   }
   return out;
 }
 
 /**
  * Hazır işleri çalıştırır, incelemeleri yürütür ve biten hedefleri kapatır; yapılacak iş kalmayınca döner.
- * @param {{db: Db, adapters: Record<string, any>, llm: Llm, cwd: string, goalId?: string|null, maxRounds?: number, maxParallel?: any, fallback?: any, signal?: AbortSignal, network?: boolean}} o
+ * @param {{db: Db, adapters: Record<string, any>, llm: Llm, cwd: string, goalId?: string|null, maxRounds?: number, maxParallel?: any, fallback?: any,
+ *   signal?: AbortSignal, network?: boolean, knowledge?: any, lessonParentId?: string|null}} o
  */
-export async function drive({ db, adapters, llm, cwd, goalId = null, maxRounds = MAX_ROUNDS, maxParallel, fallback, signal, network }) {
+export async function drive({ db, adapters, llm, cwd, goalId = null, maxRounds = MAX_ROUNDS, maxParallel, fallback, signal, network, knowledge = null, lessonParentId = null }) {
   const totals = { done: 0, failed: 0, blocked: 0, skippedBudget: 0, reviews: 0 };
   for (let guard = 0; guard < 100 && !signal?.aborted; guard++) {
     const r = await runReady({ db, adapters, cwd, signal, network, ...(maxParallel ? { maxParallel } : {}), ...(fallback ? { fallback } : {}) });
@@ -193,7 +207,7 @@ export async function drive({ db, adapters, llm, cwd, goalId = null, maxRounds =
     await Promise.all(inReview.map((t) => handleReview({ db, task: t, llm, cwd, maxRounds })));
     totals.reviews += inReview.length;
   }
-  const finished = await finalizeGoals({ db, llm, cwd, goalId });
+  const finished = await finalizeGoals({ db, llm, cwd, goalId, knowledge, lessonParentId });
   return { ...totals, goals: finished };
 }
 

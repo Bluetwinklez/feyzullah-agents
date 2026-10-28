@@ -13,6 +13,7 @@ import { addDependency, createTask, readyTasks, recoverStale } from './core/task
 import { createCliAdapter } from './engines/adapter.js';
 import { normalizeEngine } from './engines/args.js';
 import { findBins } from './engines/bins.js';
+import { openKnowledge } from './knowledge/noesis.js';
 
 const USAGE = `Kullanım: fa <komut>
   init [--kind generic|roblox]                 çalışma alanını hazırlar
@@ -24,6 +25,7 @@ const USAGE = `Kullanım: fa <komut>
   approve <onay-id> [--reject]                 bekleyen onaya karar verir
   comment <görev-id> "<metin>" [--file <f>] [--line <n>] [--wake]
   council "<soru>" [--context <metin>]         5 danışmanlı konsey kararı
+  know "<metin>"                               Noesis'ten bu metne uygun bağlam
   status                                       durum, son olaylar, bütçe
   bins                                         bulunan motorlar
   bench                                        1000 görevle hız ölçümü`;
@@ -68,10 +70,12 @@ function parseParallel(s) {
 
 /**
  * @param {string[]} argv
- * @param {{dbPath?: string, stdout?: {write: (s: string) => void}, cwd?: string, adapters?: Record<string, any>, llm?: import('./core/orchestrator.js').Llm}} [o]
+ * @param {{dbPath?: string, stdout?: {write: (s: string) => void}, cwd?: string, adapters?: Record<string, any>, llm?: import('./core/orchestrator.js').Llm,
+ *   knowledge?: any}} [o]
+ *   knowledge: verilmezse Noesis kuruluysa ona bağlanılır (FA_NOESIS=0 kapatır).
  * @returns {Promise<number>} çıkış kodu
  */
-export async function main(argv, { dbPath, stdout = process.stdout, cwd = process.cwd(), adapters, llm } = {}) {
+export async function main(argv, { dbPath, stdout = process.stdout, cwd = process.cwd(), adapters, llm, knowledge: knowledgeIn } = {}) {
   const say = (s = '') => stdout.write(`${s}\n`);
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === 'help' || cmd === '--help') { say(USAGE); return 0; }
@@ -81,10 +85,16 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
+  let opened = null;
+  const knowledgeOf = () => {
+    if (knowledgeIn !== undefined) return knowledgeIn;
+    if (opened === null) opened = openKnowledge(db) ?? false;
+    return opened || null;
+  };
   try {
     const recovered = recoverStale(db);
     if (recovered) say(`kurtarıldı: ${recovered} yarım kalan çalışma yeniden kuyrukta`);
@@ -118,9 +128,9 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       const stop = () => ctrl.abort();
       process.once('SIGINT', stop);
       try {
-        const r = await drive({ db, adapters: ad, llm: llmFor(ad), cwd: root, signal: ctrl.signal, ...extra });
+        const r = await drive({ db, adapters: ad, llm: llmFor(ad), cwd: root, signal: ctrl.signal, knowledge: knowledgeOf(), lessonParentId: process.env.FA_NOESIS_PARENT ?? null, ...extra });
         say(`bitti ${r.done}, başarısız ${r.failed}, bekleyen ${r.blocked} (bütçe ${r.skippedBudget}), inceleme ${r.reviews}`);
-        for (const g of r.goals) say(`hedef ${g.goalId.slice(0, 8)}: ${g.status}\n${g.report}`);
+        for (const g of r.goals) say(`hedef ${g.goalId.slice(0, 8)}: ${g.status}\n${g.report}${g.lesson?.created ? `\nNoesis'e not yazıldı: ${g.lesson.id}` : ''}`);
       } finally { process.off('SIGINT', stop); }
     };
     const llmFor = (ad) => llm ?? createLlm(ad, { cwd: root });
@@ -135,7 +145,14 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       if (!title) throw new UsageError('hedef gerekli');
       const goal = createGoal(db, { title, description: one('description'), checks: opt.check ?? null });
       const ad = await getAdapters();
-      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
+      const kn = knowledgeOf();
+      let context = '';
+      if (kn) {
+        const c = await kn.contextFor(`${title} ${one('description') ?? ''}`).catch(() => ({ text: '', pages: [], warnings: [] }));
+        context = c.text;
+        if (c.pages.length) say(`Noesis: ${c.pages.length} not bağlama eklendi${c.warnings.length ? `, ${c.warnings.length} uyarılı (${c.warnings.map((w) => w.title).join('; ')})` : ''}`);
+      }
+      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), knowledge: context, requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
       say(`hedef ${goal.id}\n${p.reply}`);
       for (const r of db.prepare('SELECT id, title, engine FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(goal.id)) say(`  ${r.id.slice(0, 8)} [${r.engine}] ${r.title}`);
       if (p.approvalId) { say(`plan onay bekliyor: fa approve ${p.approvalId}`); return 0; }
@@ -169,6 +186,13 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       say(`yorum eklendi${opt.wake ? ', görev yeniden kuyrukta' : ''}`);
       return 0;
     }
+    if (cmd === 'know') {
+      const kn = knowledgeOf();
+      if (!kn) { say('Noesis bulunamadı (FA_NOESIS_EXE ile yol verilebilir)'); return 1; }
+      const c = await kn.contextFor(rest.join(' '));
+      say(c.text || '(ilgili not yok)');
+      return 0;
+    }
     if (cmd === 'council') {
       const { pos, one } = parseArgs(rest);
       const question = pos.join(' ').trim();
@@ -190,6 +214,7 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     if (err instanceof UsageError || /bilinmeyen motor|döngü/.test(err.message)) { say(`hata: ${err.message}`); return 2; }
     throw err;
   } finally {
+    if (opened) opened.close();
     db.close();
   }
 }

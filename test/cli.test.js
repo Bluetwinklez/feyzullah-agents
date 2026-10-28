@@ -13,7 +13,7 @@ function setup(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let out = '';
   const stdout = { write: (s) => { out += s; } };
-  const run = (argv, extra = {}) => main(argv, { dbPath: join(dir, 'fa.db'), cwd: dir, stdout, ...extra });
+  const run = (argv, extra = {}) => main(argv, { dbPath: join(dir, 'fa.db'), cwd: dir, stdout, knowledge: null, ...extra });
   return { dir, run, out: () => out, reset: () => { out = ''; } };
 }
 
