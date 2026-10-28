@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"11111111-1111-4111-8111-111111111111","tools":[]}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1761700000,"rateLimitType":"five_hour"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Merhaba "}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"dünya"}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"11111111-1111-4111-8111-111111111111","result":"Merhaba dünya","usage":{"input_tokens":10,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":5},"total_cost_usd":0}
