@@ -182,6 +182,7 @@ test('worktree: görev kendi dalında çalışır, adım commit\'i atılır, ona
   const m = await mergeWorktree(db, { taskId: task.id, checks: ['node -e "process.exit(0)"'] });
   assert.equal(m.merged, true);
   assert.equal(readFileSync(join(r, 'b.txt'), 'utf8'), 'iki\n');
+  assert.equal(git(r, ['log', '-1', '--format=%s']).out, 'fa: birleştir — b dosyası', 'birleştirme commit\'i adım commit\'inden ayırt edilir');
   db.close();
 });
 

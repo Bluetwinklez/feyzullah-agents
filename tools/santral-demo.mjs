@@ -1,14 +1,20 @@
 // Santral önizlemesi: geçici veritabanı, sahte motorlar (gerçek CLI çağrılmaz, kredi harcanmaz).
 // Kullanım: node tools/santral-demo.mjs [port]
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadAgents, syncAgents } from '../src/agents/registry.js';
 import { requestApproval } from '../src/core/board.js';
 import { openDb } from '../src/core/db.js';
 import { createSantral } from '../src/server/http.js';
+import * as roblox from '../packages/roblox/index.js';
 
-const db = openDb(join(mkdtempSync(join(tmpdir(), 'fa-demo-')), 'fa.db'));
+const dir = mkdtempSync(join(tmpdir(), 'fa-demo-'));
+const db = openDb(join(dir, 'fa.db'));
+// Roblox paneli için örnek üretim sırası (gerçek projeye dokunulmaz).
+mkdirSync(join(dir, 'docs'));
+writeFileSync(join(dir, 'docs', 'uretim-sirasi.md'), ['## Kod geliştirme sırası', '', '| # | Adım | Durum |', '|---|---|---|',
+  ...['Temel yapı|GEÇTİ', 'Oyuncu verisi|GEÇTİ', 'Ekonomi|Bekliyor', 'Envanter|Bekliyor', 'Mağaza|Bekliyor'].map((r, i) => `| ${i + 1} | ${r} |`), ''].join('\n'));
 syncAgents(db, loadAgents([join(import.meta.dirname, '..', 'agents')]));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const fake = (engine, ms) => ({
@@ -33,6 +39,7 @@ const llm = async ({ prompt }) => {
   if (/Sen yöneticisin/.test(prompt)) return `\`\`\`json\n${JSON.stringify(plan)}\n\`\`\``;
   return 'NBL sezon raporu hazır.\n\nVeri 4.812 maçtan temizlendi; eksik oyuncu etkisi Elo farkının yaklaşık üçte biri kadar.\nGrafikler ve sakatlık kaynakları rapora eklendi.';
 };
-const s = createSantral({ db, adapters: { codex: fake('codex', 6000), antigravity: fake('antigravity', 4000), claude: fake('claude', 3000) }, llm, cwd: '.', port: Number(process.argv[2] ?? 4318) });
+const s = createSantral({ db, adapters: { codex: fake('codex', 6000), antigravity: fake('antigravity', 4000), claude: fake('claude', 3000) }, llm, cwd: '.', port: Number(process.argv[2] ?? 4318), pack: roblox });
+roblox.importProduction(db, { root: dir, checks: [] });
 console.log(`Santral demo: ${await s.listen()}`);
 requestApproval(db, { action: 'credits.spend', entity: 'task', entityId: 'krea', payload: { branch: 'Krea · ≈10 kredi' } });
