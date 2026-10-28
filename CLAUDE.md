@@ -3,8 +3,8 @@
 Bu repoda çalışan her ajan (Claude, Codex, agy) için kurallar. Codex ve agy aynı içeriği `AGENTS.md` dosyasından okur.
 
 ## Durum
-Proje **planlama aşamasında**. Plan: `docs/PLAN.md`. Veri kaynakları: `docs/KAYNAKLAR.md`. Kararlar: `docs/KARARLAR.md`.
-Bir aşamanın kodunu yazmaya ancak plan o aşama için onaylandıysa başla.
+Aşama 1–7 kodlandı (bkz. `docs/PLAN.md` aşama tablosu). Plan: `docs/PLAN.md`. Veri kaynakları: `docs/KAYNAKLAR.md`. Kararlar: `docs/KARARLAR.md`.
+Yeni bir aşama ya da büyük özellik için önce plan onayı al.
 
 ## Değişmez kurallar
 - API anahtarı, jeton, şifre ya da kişisel veri repoya, loglara ve Noesis'e yazılmaz. `~/.feyzullah/` altından hiçbir dosya kopyalanmaz.

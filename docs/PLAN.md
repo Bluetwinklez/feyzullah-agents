@@ -1,6 +1,6 @@
 # feyzullah-agents: plan
 
-Durum: **planlama**. Bu belgede yazılanların hiçbiri henüz kodlanmadı.
+Durum: **aşama 1–7 kodlandı** (PR #2–#8, main'e alınmayı bekliyor). Ertelenenler: [PAKETLER.md](PAKETLER.md#ertelenenler).
 
 ## 1. Amaç
 
@@ -143,16 +143,16 @@ Hedefler aşama 2'den itibaren `fa bench` komutuyla ölçülecek. Office ile ayn
 
 Her aşama bitince ayrı bir PR açılır, testler geçer, ardından main'e alınır.
 
-| # | Aşama | Çıktı | Bitti sayılması için |
-|---|---|---|---|
-| 0 | **Plan ve ortam** (bu PR) | Belgeler, klasör iskeleti, kurallar | Plan onaylandı |
-| 1 | Çekirdek | SQLite şema + olay günlüğü, görev DAG'i + atomik checkout, motor adaptörleri, kullanım ve bütçe verisi, politika, makine kontrolleri, `fa` komutu | `npm test` yeşil, `fa bench` 1 saniyenin altında, bir gerçek motor görevi bitiriyor. Ayrıntı: [Aşama 1 planı](superpowers/plans/2026-10-28-asama-1-cekirdek.md) |
-| 2 | Yönetici ve pano | Yönetici + kontrolcü döngüsü, hedefler, uyandırma, yorum ve belgeler, plan onayı, **konsey kipi**, çalışma alanları | `fa run` ile bir hedef plandan bitişe gidiyor |
-| 3 | Bilgi katmanı | Noesis okuma/yazma, FTS arama, gizli bilgi filtresi, "ne öğrendik" sayfaları | Görev Noesis bağlamıyla çalışıyor, sonuç arşive yazılıyor |
-| 4 | Uzman havuzu | **5 departman** (Build, Design, Grow, Make, Run), org şeması, `agents/*.md`, skill bağları ve testleri, ajan başına model | Her departmandan bir örnek görev geçiyor |
-| 5 | İşletim | worktree, rutinler (cron), bekçi ve kurtarma, onay kapıları, bütçe zorlama, sır kasası, yedek motor | Limit dolunca iş başka motorla bitiyor, push onaysız gitmiyor |
-| 6 | Santral ve API | Yerel HTTP/SSE API, Santral arayüzü (`docs/tasarim/v2`), yöneticiyle sohbet, belgeye pasaj yorumu, mobil | Hedefler tablosundaki arayüz ölçütleri tutuyor |
-| 7 | Paketler | **Roblox ilk paket** ([ROBLOX.md](ROBLOX.md)), diğer alan paketleri, içe/dışa aktarma, eklentiler, iş kuyruğu, işe alma önerileri | Her paketin örnek akışı belgeli |
+| # | Aşama | Çıktı | Bitti sayılması için | Durum |
+|---|---|---|---|---|
+| 0 | **Plan ve ortam** (bu PR) | Belgeler, klasör iskeleti, kurallar | Plan onaylandı | bitti |
+| 1 | Çekirdek | SQLite şema + olay günlüğü, görev DAG'i + atomik checkout, motor adaptörleri, kullanım ve bütçe verisi, politika, makine kontrolleri, `fa` komutu | `npm test` yeşil, `fa bench` 1 saniyenin altında, bir gerçek motor görevi bitiriyor. Ayrıntı: [Aşama 1 planı](superpowers/plans/2026-10-28-asama-1-cekirdek.md) | kodlandı, PR #2 |
+| 2 | Yönetici ve pano | Yönetici + kontrolcü döngüsü, hedefler, uyandırma, yorum ve belgeler, plan onayı, **konsey kipi**, çalışma alanları | `fa run` ile bir hedef plandan bitişe gidiyor | kodlandı, PR #3 |
+| 3 | Bilgi katmanı | Noesis okuma/yazma, FTS arama, gizli bilgi filtresi, "ne öğrendik" sayfaları | Görev Noesis bağlamıyla çalışıyor, sonuç arşive yazılıyor | kodlandı, PR #4 |
+| 4 | Uzman havuzu | **5 departman** (Build, Design, Grow, Make, Run), org şeması, `agents/*.md`, skill bağları ve testleri, ajan başına model | Her departmandan bir örnek görev geçiyor | kodlandı, PR #5 |
+| 5 | İşletim | worktree, rutinler (cron), bekçi ve kurtarma, onay kapıları, bütçe zorlama, sır kasası, yedek motor | Limit dolunca iş başka motorla bitiyor, push onaysız gitmiyor | kodlandı, PR #6 |
+| 6 | Santral ve API | Yerel HTTP/SSE API, Santral arayüzü (`docs/tasarim/v2`), yöneticiyle sohbet, belgeye pasaj yorumu, mobil | Hedefler tablosundaki arayüz ölçütleri tutuyor | kodlandı, PR #7 |
+| 7 | Paketler | **Roblox ilk paket** ([ROBLOX.md](ROBLOX.md)), diğer alan paketleri, içe/dışa aktarma, eklentiler, iş kuyruğu, işe alma önerileri | Her paketin örnek akışı belgeli | kodlandı, PR #8 |
 
 Paperclip'in bütün özelliklerinin bu aşamalara nasıl dağıldığı: [`OZELLIK-HARITASI.md`](OZELLIK-HARITASI.md).
 
