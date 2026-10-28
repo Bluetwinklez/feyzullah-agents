@@ -15,7 +15,7 @@ export const TASK_FILE = '.fa-gorev.md';
 
 /**
  * @typedef {import('./parse.js').Usage} Usage
- * @typedef {{prompt: string, persona?: string|null, cwd: string, resumeId?: string|null, allowedTools?: string[], network?: boolean,
+ * @typedef {{prompt: string, persona?: string|null, cwd: string, resumeId?: string|null, allowedTools?: string[], network?: boolean, model?: string|null,
  *   signal?: AbortSignal, onEvent?: (ev: import('./parse.js').ParsedLine) => void}} ExecuteInput
  * usage: motor kullanım satırı basmadıysa null (ör. limite takılıp hemen çıkan codex).
  * @typedef {{text: string, final: string|null, sessionId: string|null, usage: Usage|null, rate: any, error: string|null, exitCode: number|null,
@@ -36,9 +36,9 @@ let fileSeq = 0;
  */
 export function createCliAdapter(engine, { bin, timeoutMs = 60 * 60_000, spawnImpl = spawn, extraPath = null, prefixArgs = [], env = {} }) {
   /** @param {ExecuteInput & {personaFile?: string|null}} i @returns {Promise<ExecuteResult>} */
-  function run({ prompt, persona = null, personaFile = null, cwd, resumeId = null, allowedTools = [], network = false, signal, onEvent = () => {} }) {
+  function run({ prompt, persona = null, personaFile = null, cwd, resumeId = null, allowedTools = [], network = false, model = null, signal, onEvent = () => {} }) {
     return new Promise((resolve) => {
-      const args = [...prefixArgs, ...cliArgs(engine, { cwd, persona, personaFile, prompt, resumeId, allowedTools, network })];
+      const args = [...prefixArgs, ...cliArgs(engine, { cwd, persona, personaFile, prompt, resumeId, allowedTools, network, model })];
       // FEYZULLAH_AGENTS: kullanıcının hook'ları bu süreçlerde susabilsin.
       const childEnv = withExtraPath({ ...process.env, ...env, FEYZULLAH_AGENTS: '1' }, extraPath);
       let child;
