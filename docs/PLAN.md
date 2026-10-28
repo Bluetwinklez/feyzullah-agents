@@ -118,5 +118,5 @@ Her aşama bitince ayrı bir PR açılır, testler geçer, ardından main'e alı
 ## 6. Açık sorular
 
 1. Ofis bu çekirdeğe mi geçecek, yoksa iki sistem ayrı mı yaşayacak? Öneri: aşama 6'da Ofis istemci olur.
-2. Paperclip (bütçe ve onay kapıları) ile codebase-memory-mcp incelensin mi? Noesis'te ikisi de "aday" olarak geçiyor. Öneri: aşama 3'ten önce bir araştırma görevi açılsın. Ruflo notunda "doğrulanmadı" yazıyor, doğrulanmadan kullanılmaz.
+2. Benzer projeler `docs/BENZER-PROJELER.md` içinde. Paperclip (MIT) bütçe ve onay kapıları için, hindsight ile codebase-memory-mcp hafıza için aday. Ruflo artık doğrulandı (ruvnet/ruflo, MIT). Öneri: aşama 3’ten önce kısa bir deneme görevi açılsın.
 3. Proje adı ve CLI komutunun adı (`fa`) uygun mu?
