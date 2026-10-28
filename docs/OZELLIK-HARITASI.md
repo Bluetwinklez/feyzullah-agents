@@ -141,14 +141,33 @@ Ayrıntı [`ROBLOX.md`](ROBLOX.md) dosyasında.
 | 65 | Santral Roblox paneli | A6 |
 | 66 | rocale-cli motor içi test, Studio MCP adaptörü, Mantle ile onaylı yayın | A7 |
 
+### Instagram arşivinden (28 Ekim 2026, ikinci parti)
+
+| # | Özellik | Kaynak | Aşama |
+|---|---|---|---|
+| 67 | **Bağlam sıkıştırma:** Test ve build logları, motor çıktıları ve Noesis sonuçları ajana verilmeden önce sıkıştırılır | headroomlabs-ai/headroom (Apache-2.0, ~78k) | A3 |
+| 68 | **Silme etkisi önizlemesi:** `fs.delete` onay kartında silinecek dosya sayısı ve boyutu gösterilir | Claude Code mod örneği "Blast radius" | A5 |
+| 69 | **Takip önerileri:** Görev bitince en fazla 3 takip görevi önerilir; kullanıcı seçer | Mod örneği "Next steps" | A2 |
+| 70 | **Bütçe tahmini:** Son çalışmalara göre "bu hızla limit ne zaman dolar" tahmini | Mod örneği "Token weather" | A5 |
+| 71 | **Adım adım diff inceleme:** Bir turdaki düzenlemeler önceki ve sonraki adımlarla gezilir | Mod örneği "Replay theater" | A6 |
+| 72 | **Claude Code içinde `fa` paneli:** `fa status` bilgisi ve onay kartları Claude Code mod'u olarak gösterilir. Santral'ın yanında ikinci bir yüz | claude.dev/mods, `plugin-authoring` skill'i | A6 |
+| 73 | **Güvenlik kapısı:** Birleştirmeden önce güvenlik denetimi; bulgular bağımsız doğrulanır | cloudflare/security-audit-skill (MIT), Claude Security eklentisi, yerel `security-audit` skill'i | A5 |
+| 74 | **Lansman videosu ve video şablonları:** Proje ya da demo bitince tanıtım videosu üretilir. Şablonlarda süre, çözünürlük, fps, sahne zamanlaması ve stil bloğu ayrı tutulur | latent-spaces/brag (MIT), HyperFrames prompt yapısı | A7 |
+| 75 | **Roblox performans kapısı:** Part ve instance sayısı ile yükleme süresi eşikleri | Clarion Studios (EditableMesh) | A5 |
+
+Değerlendirilip alınmayanlar:
+- **OmniRoute:** Kod üçüncü taraf sağlayıcılara gidiyor, yedek motor olarak kullanılmaz.
+- **openbot:** Lisans belirsiz, yalnız fikir alınır: ajan başına iş kuyruğu ve dosya paylaşımı.
+- **Graphify ve Understand Anything:** Doğrulanmadı. A3'te codebase-memory-mcp ile birlikte denenecek adaylar.
+
 ## Kapsam özeti
 
 | Aşama | Paperclip maddeleri | Ek |
 |---|---|---|
 | A1 Çekirdek | 1, 2, 3, 4 (veri), 5, 17 (liste), 33–37, 45–48, 50, 60 | Ofis'le birebir motor adaptörleri, DAG, makine kontrolü, limitte yedek motor |
-| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61 | Konsey kipi |
-| A3 Bilgi | 20, 21, 22, 62 | Noesis |
+| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61, 69 | Konsey kipi |
+| A3 Bilgi | 20, 21, 22, 62, 67 | Noesis |
 | A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63 | 5 departman |
-| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64 | Git akışı, birleştirme kapısı |
-| A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65 | Zaman çizelgesi arayüzü |
-| A7 Paketler | 14, 26, 27, 29, 30, 66 | Roblox ilk paket |
+| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64, 68, 70, 73, 75 | Git akışı, birleştirme kapısı |
+| A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65, 71, 72 | Zaman çizelgesi arayüzü |
+| A7 Paketler | 14, 26, 27, 29, 30, 66, 74 | Roblox ilk paket |

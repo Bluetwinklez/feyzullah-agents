@@ -28,6 +28,11 @@ feyzullah-agents'ın ilk alan paketi Roblox. Amaç: Ofis'le yürütülen `roblox
 | 5. Place dosyası dönüşümü | Lune (`@lune/roblox`) | `lune run scripts/<x>.luau` | Lune kurulumu (Rokit ile) | İsteğe bağlı |
 | 6. Motor içi test | **rocale-cli** (resmi, MIT) + Jest-Lua | `rocale-cli run …` | Open Cloud anahtarı, **test place** | Birleştirmeden önce, **onaylı** |
 | 7. Canlı oynatma | Studio'nun gömülü MCP'si | `start_stop_play`, `get_console_output`, `screen_capture` | Açık Studio | Elle ya da onaylı |
+| 8. Performans | Lune ile `.rbxl` sayımı, Studio'da yükleme süresi | Part ve instance sayısı, `workspace` yükleme süresi | Lune / açık Studio | Harita ya da dünya değişince |
+
+Performans kapısının nedeni: Bir Roblox strateji oyununda yaklaşık 15.000 Part dünyanın yüklenmesini 11 dakikaya çıkarmış. Geometri EditableMesh ile birleştirilince süre 15 saniyeye inmiş (Noesis: "Performans: binlerce Part yerine EditableMesh"). sokak-oyunu açık dünya olduğu için:
+- Eşikler proje ayarında tutulur, örneğin `maxParts`, `maxLoadSeconds`.
+- Eşik aşılırsa görev `in_review` olur ve `roblox-performance` rehberiyle düzeltme önerilir.
 
 1–4 arası katmanlar bugün de makinede çalışıyor. 5 ve 6 için yeni kurulum ve anahtar gerekir.
 

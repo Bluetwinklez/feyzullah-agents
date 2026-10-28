@@ -66,3 +66,13 @@ Kullanılmayacaklar:
 - vibe-kanban: Şirket kapattı, topluluk sürdürüyor.
 
 Roblox araçları: [`ROBLOX.md`](ROBLOX.md).
+
+## Instagram arşivinden (28 Ekim 2026)
+
+| Repo | ★ | Lisans | Alınacak |
+|---|---|---|---|
+| [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | 78k | Apache-2.0 | Log, JSON ve araç çıktısı sıkıştırma (kütüphane, proxy ya da MCP). A3'te denenecek |
+| [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) | 50.7k | MIT | Çok aşamalı güvenlik denetimi, doğrulanmış bulgular. A5 güvenlik kapısı |
+| [latent-spaces/brag](https://github.com/latent-spaces/brag) | 19.2k | MIT | Projeden lansman videosu. A7 içerik paketi |
+| [nightly-labs/openbot](https://github.com/nightly-labs/openbot) | 2.8k | Belirsiz | Yalnız fikir: ajan başına iş kuyruğu, dosya paylaşımı |
+| [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/OmniRoute) | 82k | MIT | **Kullanılmaz:** istemler üçüncü taraf sağlayıcılara gidiyor |
