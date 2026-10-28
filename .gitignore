@@ -5,3 +5,9 @@ dist/
 *.log
 token
 *.bak-*
+catalog/
+.feyzullah/
+.feyzullah-agents/
+*.db
+*.sqlite
+ayarlar.json
