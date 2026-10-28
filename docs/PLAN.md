@@ -136,13 +136,15 @@ Her aşama bitince ayrı bir PR açılır, testler geçer, ardından main'e alı
 | # | Aşama | Çıktı | Bitti sayılması için |
 |---|---|---|---|
 | 0 | **Plan ve ortam** (bu PR) | Belgeler, klasör iskeleti, kurallar | Plan onaylandı |
-| 1 | Çekirdek taşıma | `engines/`, `core/runner`, `core/policy`, office testleri | Office testlerinin karşılığı geçiyor |
-| 2 | Yönetici ve pano | `core/orchestrator`, SQLite pano, kontrolcü döngüsü, CLI | `fa run` ile bir görev uçtan uca bitiyor |
-| 3 | Bilgi katmanı | Noesis okuma/yazma, gizli bilgi filtresi | Görev Noesis bağlamıyla çalışıyor, sonuç arşive yazılıyor |
-| 4 | Uzman havuzu | Katalog + yerel skill uzmanları + profiller | Her alandan bir örnek görev geçiyor |
-| 5 | Git, zamanlama, limitler | worktree, zamanlanmış komut, yedek motor | Limit dolunca iş başka motorla bitiyor |
-| 6 | Web arayüzü ve API | Yerel HTTP/SSE API, "Santral" arayüzü (`docs/tasarim/v2`) | Hedefler tablosundaki arayüz ölçütleri tutuyor |
-| 7 | Alan paketleri | Roblox, Godot, içerik, veri, araştırma şablonları | Her paketin örnek akışı belgeli |
+| 1 | Çekirdek | SQLite şema + olay günlüğü, görev DAG'i + atomik checkout, motor adaptörleri, kullanım ve bütçe verisi, politika, makine kontrolleri, `fa` komutu | `npm test` yeşil, `fa bench` 1 saniyenin altında, bir gerçek motor görevi bitiriyor. Ayrıntı: [Aşama 1 planı](superpowers/plans/2026-10-28-asama-1-cekirdek.md) |
+| 2 | Yönetici ve pano | Yönetici + kontrolcü döngüsü, hedefler, uyandırma, yorum ve belgeler, plan onayı, **konsey kipi**, çalışma alanları | `fa run` ile bir hedef plandan bitişe gidiyor |
+| 3 | Bilgi katmanı | Noesis okuma/yazma, FTS arama, gizli bilgi filtresi, "ne öğrendik" sayfaları | Görev Noesis bağlamıyla çalışıyor, sonuç arşive yazılıyor |
+| 4 | Uzman havuzu | **5 departman** (Build, Design, Grow, Make, Run), org şeması, `agents/*.md`, skill bağları ve testleri, ajan başına model | Her departmandan bir örnek görev geçiyor |
+| 5 | İşletim | worktree, rutinler (cron), bekçi ve kurtarma, onay kapıları, bütçe zorlama, sır kasası, yedek motor | Limit dolunca iş başka motorla bitiyor, push onaysız gitmiyor |
+| 6 | Santral ve API | Yerel HTTP/SSE API, Santral arayüzü (`docs/tasarim/v2`), yöneticiyle sohbet, belgeye pasaj yorumu, mobil | Hedefler tablosundaki arayüz ölçütleri tutuyor |
+| 7 | Paketler | Alan paketleri, içe/dışa aktarma, eklentiler, iş kuyruğu, işe alma önerileri | Her paketin örnek akışı belgeli |
+
+Paperclip'in bütün özelliklerinin bu aşamalara nasıl dağıldığı: [`OZELLIK-HARITASI.md`](OZELLIK-HARITASI.md).
 
 ## 6. Açık sorular
 
