@@ -17,7 +17,8 @@ export const TASK_FILE = '.fa-gorev.md';
  * @typedef {import('./parse.js').Usage} Usage
  * @typedef {{prompt: string, persona?: string|null, cwd: string, resumeId?: string|null, allowedTools?: string[], network?: boolean,
  *   signal?: AbortSignal, onEvent?: (ev: import('./parse.js').ParsedLine) => void}} ExecuteInput
- * @typedef {{text: string, final: string|null, sessionId: string|null, usage: Usage, rate: any, error: string|null, exitCode: number|null,
+ * usage: motor kullanım satırı basmadıysa null (ör. limite takılıp hemen çıkan codex).
+ * @typedef {{text: string, final: string|null, sessionId: string|null, usage: Usage|null, rate: any, error: string|null, exitCode: number|null,
  *   timedOut: boolean, stderr: string}} ExecuteResult
  * @typedef {{engine: string, execute: (i: ExecuteInput) => Promise<ExecuteResult>}} Adapter
  */
@@ -44,7 +45,7 @@ export function createCliAdapter(engine, { bin, timeoutMs = 60 * 60_000, spawnIm
       try {
         child = spawnImpl(bin, args, { cwd, windowsHide: true, env: childEnv, detached: !WIN });
       } catch (err) {
-        resolve({ text: '', final: null, sessionId: resumeId, usage: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, known: false }, rate: null,
+        resolve({ text: '', final: null, sessionId: resumeId, usage: null, rate: null,
           error: `başlatılamadı: ${err.message}`, exitCode: null, timedOut: false, stderr: '' });
         return;
       }
@@ -89,8 +90,7 @@ export function createCliAdapter(engine, { bin, timeoutMs = 60 * 60_000, spawnIm
         settled = true;
         if (timer) clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
-        resolve({ text: (final ?? streamed).trim(), final, sessionId, usage: usage ?? { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, known: false },
-          rate, error, exitCode, timedOut, stderr: stderr.trim() });
+        resolve({ text: (final ?? streamed).trim(), final, sessionId, usage, rate, error, exitCode, timedOut, stderr: stderr.trim() });
       };
       child.on('error', (err) => { error = `başlatılamadı: ${err.message}`; finish(null); });
       child.on('close', (code) => { handle(buf + dec.end()); buf = ''; finish(code); });

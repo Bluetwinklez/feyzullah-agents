@@ -66,11 +66,12 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
       resumeId = null;
       res = await adapters[engine].execute({ ...input, resumeId: null });
     }
-    recordUsage(db, { runId: run.id, agentId: task.assignee_agent_id, engine, model: agent?.model ?? null, usage: res.usage });
     if (res.sessionId) saveSession(db, key, res.sessionId);
     const lim = res.timedOut || (!res.error && res.final != null) ? { limited: false, retryAt: null }
       : detectLimit({ error: res.error, rate: res.rate, text: res.final == null ? res.stderr : null });
     const status = res.timedOut ? 'timed_out' : !res.error && res.final != null ? 'succeeded' : lim.limited ? 'limited' : 'failed';
+    // Kullanım satırı gelmediyse kayıt yok; "bilinmeyen kullanım" yalnız kullanım vermeyen motorların (agy) başarılı işlerini sayar.
+    if (res.usage) recordUsage(db, { runId: run.id, agentId: task.assignee_agent_id, engine, model: agent?.model ?? null, usage: res.usage });
     finishRun(db, run.id, {
       status, exitCode: res.exitCode, error: res.error ?? (status === 'failed' ? res.stderr?.slice(-300) || 'cevap yok' : null),
       sessionAfter: res.sessionId, usage: res.usage, retryAt: lim.retryAt, stdoutExcerpt: res.text?.slice(-EXCERPT) ?? null,
