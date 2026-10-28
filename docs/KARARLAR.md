@@ -20,3 +20,4 @@
 | 2026-10-28 | Koordinasyon deterministik, LLM yalnız plan ve incelemede | Bernstein yaklaşımı, token ve gecikme kazancı |
 | 2026-10-28 | Roblox ilk alan paketi (`ROBLOX.md`). sokak-oyunu durdurulmuş durumuyla içe aktarılır | Kullanıcı isteği |
 | 2026-10-28 | Roblox Open Cloud anahtarı yalnız test place'i için, en az izinli. Yayın her seferinde onaylı | Güvenlik |
+| 2026-10-28 | CLI komutunun adı `fa` kalıyor | Kullanıcı onayı |
