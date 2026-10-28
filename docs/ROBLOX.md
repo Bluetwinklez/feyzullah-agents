@@ -88,6 +88,7 @@ Bellekteki kural koda dönüşür:
   - obfuscated 6xvl/robloxstudio-mcp
   - ZeroScript (tarayıcı köprüsü, GPL)
   - lisansı olmayan forge-context-engine ve RobloxForge-Intelligence
+  - ForgeGUI MCP (elwinhe/forgegui-plugins): lisanssız, 2 yıldız, tanıtım içeriği; doğrulanana kadar kullanılmaz
 - **Yedek:** Özel repo `Bluetwinklez/roblox-sokak-oyunu`. Repo özel kalır, herkese açık yapılmaz. Ajanların push'u yine `git.push` onayına tabidir.
 
 ## Araç tablosu

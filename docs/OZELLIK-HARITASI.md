@@ -158,16 +158,46 @@ Ayrıntı [`ROBLOX.md`](ROBLOX.md) dosyasında.
 Değerlendirilip alınmayanlar:
 - **OmniRoute:** Kod üçüncü taraf sağlayıcılara gidiyor, yedek motor olarak kullanılmaz.
 - **openbot:** Lisans belirsiz, yalnız fikir alınır: ajan başına iş kuyruğu ve dosya paylaşımı.
-- **Graphify ve Understand Anything:** Doğrulanmadı. A3'te codebase-memory-mcp ile birlikte denenecek adaylar.
+- **Understand Anything:** Doğrulanmadı.
+
+### Instagram arşivinden (28 Ekim 2026, üçüncü parti)
+
+| # | Özellik | Kaynak | Aşama |
+|---|---|---|---|
+| 76 | **Kod bilgi grafı:** Deterministik AST ayrıştırma, her bağlantının açıklaması var, vektör deposu yok. Kod uzmanlarına bağlam verir | Graphify-Labs/graphify (Apache-2.0, ~137k, doğrulandı) | A3 |
+| 77 | **Departman ve skill haritası:** Her departmandaki rollere hazır skill ve MCP'ler bağlanır (aşağıdaki tablo). Ücretli araçlar `credits.spend` onayına gider | Deepak Jangir "35 add-ons" | A4 |
+| 78 | **"İkinci görüş" inceleyici:** İşi yapan motordan farklı bir motor inceler (Codex işi Claude inceler, Claude işi Codex) | Deepak Jangir QA rolü | A2 |
+| 79 | **Gereksinimden görev grafiği:** Bir gereksinim belgesi bağımlılıklı görevlere bölünür, her görev karmaşıklık puanı alır; puanı yüksek olan alt görevlere bölünür | claude-task-master (lisans belirsiz, yalnız fikir) | A2 |
+| 80 | **Kanıtlı güvenlik bulgusu:** Bulgu yalnız çalışan PoC ya da başarısız bir testle kabul edilir. Sızma testi aracı yalnız kendi uygulamada, test ortamında ve onaylı çalışır | Shannon (AGPL, yalnız fikir) | A5 |
+| 81 | **Hazır uygulama şablonları:** RAG, sesli ajan ve çok ajanlı ekip örnekleri alan paketi olarak | Shubhamsaboo/awesome-llm-apps (Apache-2.0, ~143k) | A7 |
+| 82 | **Ek motor adaptörü:** OpenHands | OpenHands | A7 |
+
+Departman ve skill haritası (madde 77; ✓ = bu makinede kurulu):
+
+| Departman | Rol | Skill / MCP |
+|---|---|---|
+| Build | Mühendis | superpowers ✓, mattpocock/skills, graphify, gstack |
+| Build | QA | playwright-mcp, security-audit ✓, Codex ikinci görüş ✓ |
+| Design | Ürün tasarımcısı | frontend-design ✓, ui-ux-pro-max, impeccable, taste, Figma MCP (yetki gerekir) |
+| Design | Hareket ve video | hyperframes, Remotion, motion-design ✓ |
+| Grow | Araştırmacı | agent-reach ✓, NotebookLM, last30days |
+| Grow | Pazarlamacı | marketing skill'leri, claude-seo, humanizer |
+| Make | İçerik | brag, OpenMontage, HyperFrames şablonları |
+| Run | Operasyon ve belge | Noesis ✓, caveman ✓, anthropic-skills (docx, xlsx, pptx, pdf) ✓, markitdown, Google Drive ✓ |
+| Run | Finans | finance plugin ✓ (yalnız okuma, ödeme yok) |
+
+Değerlendirilip alınmayanlar:
+- **ForgeGUI MCP:** Lisanssız, 2 yıldızlı, tanıtım içeriği. Roblox'ta doğrulanmamış MCP listesine eklendi.
+- **claude-swarm:** Repo artık yok.
 
 ## Kapsam özeti
 
 | Aşama | Paperclip maddeleri | Ek |
 |---|---|---|
 | A1 Çekirdek | 1, 2, 3, 4 (veri), 5, 17 (liste), 33–37, 45–48, 50, 60 | Ofis'le birebir motor adaptörleri, DAG, makine kontrolü, limitte yedek motor |
-| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61, 69 | Konsey kipi |
-| A3 Bilgi | 20, 21, 22, 62, 67 | Noesis |
-| A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63 | 5 departman |
-| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64, 68, 70, 73, 75 | Git akışı, birleştirme kapısı |
+| A2 Yönetici | 6, 7, 8, 9, 10, 23, 28, 39, 41, 49, 56, 59, 61, 69, 78, 79 | Konsey kipi |
+| A3 Bilgi | 20, 21, 22, 62, 67, 76 | Noesis |
+| A4 Uzmanlar | 11, 12, 13, 19, 38, 42, 57, 63, 77 | 5 departman |
+| A5 İşletim | 4 (zorlama), 10 (kapılar), 15, 16, 17 (geçit), 18, 40, 43, 51–54, 58, 64, 68, 70, 73, 75, 80 | Git akışı, birleştirme kapısı |
 | A6 Santral | 23 (pasaj yorumu), 24, 25, 44, 55, 65, 71, 72 | Zaman çizelgesi arayüzü |
-| A7 Paketler | 14, 26, 27, 29, 30, 66, 74 | Roblox ilk paket |
+| A7 Paketler | 14, 26, 27, 29, 30, 66, 74, 81, 82 | Roblox ilk paket |

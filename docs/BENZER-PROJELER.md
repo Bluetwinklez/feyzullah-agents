@@ -76,3 +76,7 @@ Roblox araçları: [`ROBLOX.md`](ROBLOX.md).
 | [latent-spaces/brag](https://github.com/latent-spaces/brag) | 19.2k | MIT | Projeden lansman videosu. A7 içerik paketi |
 | [nightly-labs/openbot](https://github.com/nightly-labs/openbot) | 2.8k | Belirsiz | Yalnız fikir: ajan başına iş kuyruğu, dosya paylaşımı |
 | [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/OmniRoute) | 82k | MIT | **Kullanılmaz:** istemler üçüncü taraf sağlayıcılara gidiyor |
+| [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) | 137k | Apache-2.0 | Kod tabanından bilgi grafı (deterministik AST). A3'te codebase-memory-mcp ile karşılaştırılacak |
+| [Shubhamsaboo/awesome-llm-apps](https://github.com/Shubhamsaboo/awesome-llm-apps) | 143k | Apache-2.0 | 100+ hazır uygulama şablonu. A7 alan paketleri |
+| [eyaltoledano/claude-task-master](https://github.com/eyaltoledano/claude-task-master) | 28k | Belirsiz | Yalnız fikir: gereksinimden bağımlılıklı görev grafiği, karmaşıklık puanı |
+| [KeygraphHQ/shannon](https://github.com/KeygraphHQ/shannon) | 50k | AGPL-3.0 | Yalnız fikir: kanıtlı güvenlik bulgusu. Araç yalnız kendi uygulamada ve onaylı kullanılır |
