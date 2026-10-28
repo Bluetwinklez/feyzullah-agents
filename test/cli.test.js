@@ -87,3 +87,47 @@ test('açılışta takılı run kurtarılır', async (t) => {
   assert.equal(getTask(db2, task.id).status, 'todo');
   db2.close();
 });
+
+test('işletim komutları: sır, rutin, worktree ile çalışma, birleştirme onayı, zincir doğrulama', async (t) => {
+  const s = setup(t);
+  const fake = { protect: (v) => `enc:${v}`, unprotect: (c) => c.slice(4) };
+  const { createVault } = await import('../src/ops/vault.js');
+  // Sır değeri komut satırına değil stdin'e gelir ve çıktıda görünmez.
+  const db0 = openDb(join(s.dir, 'fa.db'));
+  const vault = createVault(db0, { crypto: fake });
+  assert.equal(await s.run(['secret', 'set', 'API_TOKEN', '--agent', 'muhendis'], { readStdin: async () => 'gizli-deger-42\n', vault }), 0);
+  s.reset();
+  assert.equal(await s.run(['secret', 'list'], { vault }), 0);
+  assert.match(s.out(), /API_TOKEN\s+muhendis/);
+  assert.ok(!s.out().includes('gizli-deger-42'));
+  db0.close();
+
+  assert.equal(await s.run(['routine', 'add', 'gece', '--cron', '0 3 * * *', '--task', 'yedek al']), 0);
+  s.reset();
+  assert.equal(await s.run(['routine', 'list']), 0);
+  assert.match(s.out(), /açık\s+0 3 \* \* \* task "gece"/);
+  assert.equal(await s.run(['routine', 'add', 'yarım']), 2);
+
+  // Depo: worktree ile çalışan görev kendi dalına commit atar, birleştirme onay ister.
+  const git = (...a) => spawnSync('git', a, { cwd: s.dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(s.dir, '.gitignore'), 'fa.db*\n.feyzullah-agents/\n');
+  git('add', '-A'); git('commit', '-q', '-m', 'ilk');
+  await s.run(['init']);
+  await s.run(['add', 'dosya yaz', '--engine', 'codex']);
+  const id = s.out().trim().split('\n').at(-1).split(' ')[0];
+  const writer = { engine: 'codex', async execute(i) { writeFileSync(join(i.cwd, 'yeni.txt'), 'x'); return okAdapter('codex').execute(i); } };
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' });
+  assert.equal(await s.run(['run', '--worktree'], { adapters: { codex: writer } }), 0);
+  assert.equal(git('log', '-1', '--format=%s', `fa/${id.slice(0, 8)}`).stdout.trim(), 'fa: dosya yaz');
+  s.reset();
+  assert.equal(await s.run(['merge', id.slice(0, 8)]), 0);
+  const approvalId = /fa approve (\S+)/.exec(s.out())[1];
+  await s.run(['approve', approvalId]);
+  s.reset();
+  assert.equal(await s.run(['merge', id.slice(0, 8)]), 0);
+  assert.match(s.out(), /birleşti/);
+  s.reset();
+  assert.equal(await s.run(['verify']), 0);
+  assert.match(s.out(), /olay zinciri sağlam/);
+});
