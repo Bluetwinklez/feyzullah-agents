@@ -43,9 +43,11 @@ export function createLlm(adapters, { cwd, order = ['claude', 'codex', 'antigrav
 /**
  * Hedefi görevlere böler. requireApproval ise görevler backlog'da bekler ve plan onayı istenir.
  * goldfish: plan, bağlamsız bir inceleyiciye okutulur; sorun bulursa bir kez yeniden planlanır.
- * @param {{db: Db, goalId: string, llm: Llm, agents?: any[], knowledge?: string, down?: Record<string, number>, requireApproval?: boolean, goldfish?: boolean}} o
+ * @param {{db: Db, goalId: string, llm: Llm, agents?: any[], knowledge?: string, down?: Record<string, number>, requireApproval?: boolean, goldfish?: boolean,
+ *   defaultChecks?: string[]}} o
+ *   defaultChecks: planlayıcı kontrol vermediyse kod görevlerine (codex) eklenecek makine kontrolleri (ör. Roblox katman 1–4).
  */
-export async function planGoal({ db, goalId, llm, agents = [], knowledge = '', down = {}, requireApproval = false, goldfish = false }) {
+export async function planGoal({ db, goalId, llm, agents = [], knowledge = '', down = {}, requireApproval = false, goldfish = false, defaultChecks = [] }) {
   const goal = getGoal(db, goalId);
   if (!goal) throw new Error(`hedef yok: ${goalId}`);
   const agentIds = agents.map((a) => a.id);
@@ -80,7 +82,7 @@ export async function planGoal({ db, goalId, llm, agents = [], knowledge = '', d
       const prompt = knowledge ? `${t.prompt}\n\n---\nBilgi arşivinden ilgili notlar (⚠ işaretli araçları önce doğrula ya da kullanma):\n${knowledge.slice(0, 2500)}` : t.prompt;
       const task = createTask(db, {
         title: t.title, prompt, engine: t.engine, assigneeAgentId: t.agent, goalId, workspaceId: goal.workspace_id, status,
-        needsReview: t.review, checks: t.checks, planKey: t.key,
+        needsReview: t.review, checks: t.checks?.length ? t.checks : t.engine === 'codex' && defaultChecks.length ? defaultChecks : t.checks, planKey: t.key,
       });
       saveDocument(db, { entity: 'task', entityId: task.id, name: 'talimat', body: prompt, author: 'manager' });
       byKey.set(t.key, task.id);
