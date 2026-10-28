@@ -39,6 +39,28 @@ test('init, add, run, status uçtan uca', async (t) => {
   db.close();
 });
 
+test('goal planlar, bitirir ve goals listeler; onaylı hedef bekler', async (t) => {
+  const s = setup(t);
+  await s.run(['init']);
+  const plan = { reply: 'tek iş', tasks: [{ key: 'a', title: 'iş', prompt: 'yap', engine: 'codex', review: false }] };
+  const llm = async (i) => (/Sen yöneticisin/.test(i.prompt) ? `\`\`\`json\n${JSON.stringify(plan)}\n\`\`\`` : 'RAPOR tamam');
+  const adapters = { codex: okAdapter('codex') };
+  assert.equal(await s.run(['goal', 'Bir şey yap'], { llm, adapters }), 0);
+  assert.match(s.out(), /hedef .+: done/);
+  assert.match(s.out(), /RAPOR tamam/);
+  s.reset();
+  assert.equal(await s.run(['goal', 'Onaylı iş', '--approval'], { llm, adapters }), 0);
+  const approval = /fa approve (\S+)/.exec(s.out())[1];
+  s.reset();
+  await s.run(['goals']);
+  assert.match(s.out(), /awaiting_approval\s+Onaylı iş \(backlog 1\)/);
+  assert.equal(await s.run(['approve', approval.slice(0, 8)]), 0);
+  s.reset();
+  await s.run(['run'], { llm, adapters });
+  await s.run(['goals']);
+  assert.match(s.out(), /done\s+Onaylı iş/);
+});
+
 test('bilinmeyen komut 2 döner', async (t) => {
   const s = setup(t);
   assert.equal(await s.run(['uç']), 2);
