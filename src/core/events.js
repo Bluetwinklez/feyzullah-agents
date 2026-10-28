@@ -1,15 +1,18 @@
 // Append-only olay günlüğü. Silme ve güncelleme veritabanı trigger'larıyla engellenir.
 import { now } from './db.js';
+import { redactText } from '../knowledge/secrets.js';
 
 const SECRET_KEY = /key|token|password|secret|authorization|cookie/i;
 
 /**
  * Anahtar adı sır gibi görünen değerleri "[gizli]" yapar; iç içe nesne ve dizilere de iner.
+ * Metin değerlerin içindeki anahtar, jeton ve kişisel veriler de maskelenir.
  * @template T
  * @param {T} obj
  * @returns {T}
  */
 export function redact(obj) {
+  if (typeof obj === 'string') return /** @type {any} */ (redactText(obj).text);
   if (Array.isArray(obj)) return /** @type {any} */ (obj.map(redact));
   if (!obj || typeof obj !== 'object') return obj;
   const out = {};

@@ -84,6 +84,14 @@ const MIGRATIONS = [
   ALTER TABLE tasks ADD COLUMN plan_key TEXT;
   CREATE INDEX tasks_goal ON tasks(goal_id);
   `,
+  // 3: bilgi katmanı önbelleği (Noesis sayfaları, sorgu sonuçları, FTS)
+  `
+  CREATE TABLE knowledge_pages (
+    id TEXT PRIMARY KEY, source TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, warning TEXT, fetched_at INTEGER NOT NULL
+  );
+  CREATE VIRTUAL TABLE knowledge_fts USING fts5(page_id UNINDEXED, title, body, tokenize = 'unicode61 remove_diacritics 2');
+  CREATE TABLE knowledge_queries (query TEXT PRIMARY KEY, source TEXT NOT NULL, results TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
