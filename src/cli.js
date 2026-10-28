@@ -1,5 +1,5 @@
 // fa: feyzullah-agents komut satırı.
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { addComment, createGoal, decideApproval, getDocument, goalProgress, pendingApprovals, saveDocument } from './core/board.js';
@@ -12,6 +12,9 @@ import { DEFAULT_PARALLEL } from './core/scheduler.js';
 import { addDependency, blockTask, createTask, getTask, readyTasks, recoverStale } from './core/tasks.js';
 import { resolveApproval } from './ops/gate.js';
 import { createSantral } from './server/http.js';
+import { suggestHires } from './agents/hiring.js';
+import { loadPackages, packageForKind, packageModule } from './packages/loader.js';
+import { exportWorkspace, importWorkspace } from './ops/transfer.js';
 import { commitStep, ensureWorktree, mergeWorktree, pushBranch, shelveWorktrees } from './ops/git.js';
 import { addRoutine, listRoutines, setRoutineEnabled, tickRoutines } from './ops/routines.js';
 import { createVault } from './ops/vault.js';
@@ -46,6 +49,11 @@ const USAGE = `Kullanım: fa <komut>
   push <dal> [--remote origin]                 sır taraması + onayla iter
   worktrees [--shelve]                         görev worktree'leri; --shelve dokunulmayanları rafa kaldırır
   verify                                       olay zincirini doğrular
+  packages                                     yüklü alan paketleri
+  roblox import [--file docs/uretim-sirasi.md] | next [<hedef>] | layers | autopilot on|off
+                                               Roblox paketi (adımlar elle açılır; autopilot kapalı gelir)
+  export [--out <dosya>] | import <dosya>      çalışma alanını JSON olarak taşır (sırlar ve günlük hariç)
+  hire [--write <id>]                          işe alma önerileri; --write uzman dosyasını yazar
   serve [--port 4317] [--host 127.0.0.1] [--worktree]
                                                Santral arayüzü ve yerel API (ağa açılırsa jetonlu adres verir)
   status                                       durum, son olaylar, bütçe ve tahmin
@@ -107,14 +115,22 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify', 'serve'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify', 'serve', 'packages', 'roblox', 'export', 'import', 'hire'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
   let opened = null;
-  const agentDirs = [BUNDLED_AGENTS, join(dirname(path), 'agents')];
   const vault = vaultIn ?? createVault(db);
-  const sync = () => { const list = loadAgents(agentDirs); syncAgents(db, list); return list; };
+  const dataDir = dirname(path);
+  const packages = () => loadPackages({ workspace: join(dataDir, 'packages') });
+  const kindOf = () => db.prepare("SELECT kind FROM workspaces WHERE id = 'default'").get()?.kind ?? 'generic';
+  // Uzmanlar: paketle gelenler, çalışma alanı türünün paketi, sonra çalışma alanının kendi uzmanları (aynı id'yi ezer).
+  const sync = () => {
+    const list = loadAgents([BUNDLED_AGENTS, packageForKind(packages(), kindOf())?.agentsDir, join(dataDir, 'agents')]);
+    syncAgents(db, list);
+    return list;
+  };
+  const kindModule = async () => packageModule(packageForKind(packages(), kindOf()));
   const knowledgeOf = () => {
     if (knowledgeIn !== undefined) return knowledgeIn;
     if (opened === null) opened = openKnowledge(db) ?? false;
@@ -176,11 +192,24 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       cwdFor: (t) => ensureWorktree(db, { repo: root, taskId: t.id }),
       onSucceeded: (t, at) => commitStep(at, `fa: ${t.title}`),
     });
+    /** Roblox içe aktarmasıyla açılmış hedefler (kaynak belgesi olanlar). */
+    const importedGoals = () => db.prepare(`SELECT g.id FROM goals g WHERE g.status IN ('planning', 'active')
+      AND EXISTS (SELECT 1 FROM documents d WHERE d.entity = 'goal' AND d.entity_id = g.id AND d.name = 'kaynak') ORDER BY g.created_at`).all();
+    const openCount = (goalId) => db.prepare("SELECT count(*) n FROM tasks WHERE goal_id = ? AND status IN ('todo', 'in_progress', 'in_review', 'blocked')").get(goalId).n;
     if (cmd === 'run') {
       const { one, opt } = parseArgs(rest, new Set(['network', 'worktree']));
       const ad = await getAdapters();
       await fireRoutines(ad);
-      await driveAll(ad, { maxParallel: parseParallel(one('parallel')), network: Boolean(opt.network), ...(opt.worktree ? worktreeOpts() : {}) });
+      const extra = { maxParallel: parseParallel(one('parallel')), network: Boolean(opt.network), ...(opt.worktree ? worktreeOpts() : {}) };
+      await driveAll(ad, extra);
+      // Roblox autopilot: geçen adımdan sonra sıradaki açılır (yalnız kullanıcı açtıysa; içe aktarmada kapalı).
+      const mod = await kindModule();
+      for (let i = 0; mod?.autopilot && mod.autopilot(db) && i < 20; i++) {
+        const opened = importedGoals().map((g) => (openCount(g.id) ? null : mod.promoteNext(db, g.id))).filter(Boolean);
+        if (!opened.length) break;
+        for (const o of opened) say(`sıradaki adım açıldı: ${o.title}`);
+        await driveAll(ad, extra);
+      }
       return 0;
     }
     if (cmd === 'routine') {
@@ -260,6 +289,78 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       await santral.close();
       return 0;
     }
+    if (cmd === 'packages') {
+      for (const p of packages()) say(`${p.name.padEnd(10)} ${p.bundled ? 'paketle gelen' : 'çalışma alanı'}  türler: ${p.kinds.join(', ') || '-'}  ${p.description ?? ''}`);
+      return 0;
+    }
+    if (cmd === 'roblox') {
+      const [sub, ...r2] = rest;
+      if (kindOf() !== 'roblox') throw new UsageError('çalışma alanı roblox değil: fa init --kind roblox');
+      const mod = await kindModule();
+      if (sub === 'layers') {
+        const ls = mod.layers(root);
+        for (const l of ls) say(`katman ${l.layer}: ${l.cmd.replace(/^set "ROKIT_ROOT=[^"]*"&& /, '')}`);
+        if (!ls.length) say('bu klasörde Roblox projesi bulunamadı (stylua.toml, selene.toml, default.project.json, tests/run-*.mjs)');
+        return 0;
+      }
+      if (sub === 'import') {
+        const { one } = parseArgs(r2);
+        if (!activeAgents(db).length) sync();
+        const res = mod.importProduction(db, { root, ...(one('file') ? { file: resolve(root, one('file')) } : {}) });
+        for (const g of res) say(`${g.goalId.slice(0, 8)} ${g.title}: ${g.done}/${g.steps} adım bitmiş, kalanlar bekliyor`);
+        say('Hiçbir adım kendiliğinden çalışmaz. Sıradakini açmak için: fa roblox next <hedef>');
+        return 0;
+      }
+      if (sub === 'next') {
+        const goals = r2[0] ? [db.prepare('SELECT id FROM goals WHERE id = ? OR id LIKE ?').get(r2[0], `${r2[0]}%`)].filter(Boolean) : importedGoals();
+        if (!goals.length) throw new UsageError('içe aktarılmış hedef yok');
+        if (goals.length > 1) throw new UsageError(`birden çok hedef var, birini seç: ${goals.map((g) => g.id.slice(0, 8)).join(', ')}`);
+        if (openCount(goals[0].id)) throw new UsageError('önceki adım bitmedi');
+        const o = mod.promoteNext(db, goals[0].id);
+        say(o ? `açıldı: ${o.title} (çalıştırmak için: fa run)` : 'açılacak adım yok');
+        return 0;
+      }
+      if (sub === 'autopilot') {
+        if (r2[0] !== 'on' && r2[0] !== 'off') { say(`autopilot: ${mod.autopilot(db) ? 'açık' : 'kapalı'}`); return 0; }
+        mod.autopilot(db, r2[0] === 'on');
+        say(`autopilot ${r2[0] === 'on' ? 'açık: geçen adımdan sonra sıradaki kendiliğinden açılır' : 'kapalı'}`);
+        return 0;
+      }
+      throw new UsageError('roblox import | next | layers | autopilot');
+    }
+    if (cmd === 'export') {
+      const { one } = parseArgs(rest);
+      const { data, redacted } = exportWorkspace(db);
+      const json = JSON.stringify(data, null, 2);
+      if (one('out')) { writeFileSync(resolve(cwd, one('out')), json); say(`yazıldı: ${one('out')}${redacted ? ` (${redacted} alanda gizli bilgi maskelendi)` : ''}`); }
+      else stdout.write(`${json}\n`);
+      return 0;
+    }
+    if (cmd === 'import') {
+      if (!rest[0]) throw new UsageError('dosya gerekli');
+      let data;
+      try { data = JSON.parse(readFileSync(resolve(cwd, rest[0]), 'utf8')); } catch (err) { throw new UsageError(`okunamadı: ${err.message}`); }
+      const added = importWorkspace(db, data);
+      say(`içe aktarıldı: ${Object.entries(added).filter(([, n]) => n).map(([t, n]) => `${t} ${n}`).join(', ') || 'yeni kayıt yok'}`);
+      return 0;
+    }
+    if (cmd === 'hire') {
+      const { one } = parseArgs(rest);
+      const list = suggestHires(db);
+      if (one('write')) {
+        const h = list.find((x) => x.id === one('write'));
+        if (!h) throw new UsageError(`öneri yok: ${one('write')}`);
+        const dir = join(dataDir, 'agents', h.department);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${h.id}.md`), h.template);
+        sync();
+        say(`uzman eklendi: ${join(dir, `${h.id}.md`)}`);
+        return 0;
+      }
+      if (!list.length) say('öneri yok: ekip son işleri karşılıyor');
+      for (const h of list) say(`${h.id}: ${h.reason}  (eklemek için: fa hire --write ${h.id})`);
+      return 0;
+    }
     if (cmd === 'verify') {
       const v = verifyChain(db);
       say(v.ok ? `olay zinciri sağlam (${v.checked} olay)` : `olay zinciri bozuk: #${v.brokenAt}`);
@@ -279,7 +380,9 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
         if (c.pages.length) say(`Noesis: ${c.pages.length} not bağlama eklendi${c.warnings.length ? `, ${c.warnings.length} uyarılı (${c.warnings.map((w) => w.title).join('; ')})` : ''}`);
       }
       if (!activeAgents(db).length) sync();
-      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), agents: activeAgents(db), knowledge: context, requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
+      const mod = await kindModule();
+      const defaultChecks = mod?.layers ? mod.layers(root).map((l) => l.cmd) : [];
+      const p = await planGoal({ db, goalId: goal.id, llm: llmFor(ad), agents: activeAgents(db), knowledge: context, defaultChecks, requireApproval: Boolean(opt.approval), goldfish: Boolean(opt.goldfish) });
       say(`hedef ${goal.id}\n${p.reply}`);
       for (const r of db.prepare('SELECT id, title, engine, assignee_agent_id a FROM tasks WHERE goal_id = ? ORDER BY created_at, rowid').all(goal.id)) say(`  ${r.id.slice(0, 8)} [${r.engine}${r.a ? `, ${r.a}` : ''}] ${r.title}`);
       if (p.approvalId) { say(`plan onay bekliyor: fa approve ${p.approvalId}`); return 0; }
