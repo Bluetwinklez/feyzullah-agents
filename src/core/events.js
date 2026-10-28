@@ -1,5 +1,6 @@
 // Append-only olay günlüğü. Silme ve güncelleme veritabanı trigger'larıyla engellenir.
-import { now } from './db.js';
+import { createHash } from 'node:crypto';
+import { now, tx } from './db.js';
 import { redactText } from '../knowledge/secrets.js';
 
 const SECRET_KEY = /key|token|password|secret|authorization|cookie/i;
@@ -26,9 +27,37 @@ export function redact(obj) {
  * @returns {number} seq
  */
 export function append(db, { actor = null, type, entity = null, entityId = null, data = null }) {
-  const r = db.prepare('INSERT INTO events(at, actor, type, entity, entity_id, data) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(now(), actor, type, entity, entityId, data == null ? null : JSON.stringify(redact(data)));
-  return Number(r.lastInsertRowid);
+  // Zincir: her olay bir öncekinin özetini içerir. İşlem içinde okunur ki iki süreç zinciri çatallamasın.
+  return tx(db, () => {
+    const at = now();
+    const json = data == null ? null : JSON.stringify(redact(data));
+    const prev = db.prepare('SELECT hash FROM events ORDER BY seq DESC LIMIT 1').get()?.hash ?? '';
+    const r = db.prepare('INSERT INTO events(at, actor, type, entity, entity_id, data, hash) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(at, actor, type, entity, entityId, json, chainHash(prev, { at, actor, type, entity, entityId, data: json }));
+    return Number(r.lastInsertRowid);
+  });
+}
+
+function chainHash(prev, e) {
+  return createHash('sha256').update(JSON.stringify([prev, e.at, e.actor, e.type, e.entity, e.entityId, e.data])).digest('hex');
+}
+
+/**
+ * Olay zincirini doğrular. Zincirden önce yazılmış (hash'siz) olaylar atlanır.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @returns {{ok: boolean, checked: number, brokenAt: number|null}}
+ */
+export function verifyChain(db) {
+  let prev = null;
+  let checked = 0;
+  for (const r of db.prepare('SELECT seq, at, actor, type, entity, entity_id, data, hash FROM events ORDER BY seq').iterate()) {
+    if (r.hash == null) { if (prev !== null) return { ok: false, checked, brokenAt: r.seq }; continue; }
+    const want = chainHash(prev ?? '', { at: r.at, actor: r.actor, type: r.type, entity: r.entity, entityId: r.entity_id, data: r.data });
+    if (want !== r.hash) return { ok: false, checked, brokenAt: r.seq };
+    prev = r.hash;
+    checked++;
+  }
+  return { ok: true, checked, brokenAt: null };
 }
 
 /**

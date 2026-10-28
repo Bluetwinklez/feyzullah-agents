@@ -3,13 +3,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { addComment, createGoal, decideApproval, getDocument, goalProgress, pendingApprovals, saveDocument } from './core/board.js';
-import { budgetStatus } from './core/costs.js';
+import { budgetForecast, budgetStatus } from './core/costs.js';
 import { councilDocument, runCouncil } from './core/council.js';
 import { approvePlan, createLlm, drive, planGoal, wakeWithComment } from './core/orchestrator.js';
 import { openDb, tx } from './core/db.js';
-import { since } from './core/events.js';
+import { since, verifyChain } from './core/events.js';
 import { DEFAULT_PARALLEL } from './core/scheduler.js';
-import { addDependency, createTask, readyTasks, recoverStale } from './core/tasks.js';
+import { addDependency, blockTask, createTask, getTask, readyTasks, recoverStale } from './core/tasks.js';
+import { commitStep, ensureWorktree, mergeWorktree, pushBranch, shelveWorktrees } from './ops/git.js';
+import { addRoutine, listRoutines, setRoutineEnabled, tickRoutines } from './ops/routines.js';
+import { createVault } from './ops/vault.js';
 import { createCliAdapter } from './engines/adapter.js';
 import { normalizeEngine } from './engines/args.js';
 import { findBins } from './engines/bins.js';
@@ -22,7 +25,8 @@ const BUNDLED_AGENTS = join(import.meta.dirname, '..', 'agents');
 const USAGE = `Kullanım: fa <komut>
   init [--kind generic|roblox]                 çalışma alanını hazırlar
   add "<başlık>" [--engine codex|claude|agy] [--after <id>]... [--prompt-file <f>] [--prompt <metin>]
-  run [--parallel codex=3,claude=1] [--network]  hazır görevleri çalıştırır, incelemeleri yürütür
+  run [--parallel codex=3,claude=1] [--network] [--worktree]
+                                               zamanı gelen rutinleri açar, hazır görevleri çalıştırır
   goal "<hedef>" [--description <m>] [--check <komut>]... [--approval] [--goldfish] [--plan-only]
                                                hedefi planlar ve (onay gerekmiyorsa) bitirir
   goals                                        hedefler ve ilerleme
@@ -31,7 +35,16 @@ const USAGE = `Kullanım: fa <komut>
   council "<soru>" [--context <metin>]         5 danışmanlı konsey kararı
   know "<metin>"                               Noesis'ten bu metne uygun bağlam
   agents [--sync]                              uzman havuzu, org şeması, eksik skill'ler
-  status                                       durum, son olaylar, bütçe
+  routine add "<ad>" (--cron "<ifade>" | --when-free <motor>) (--goal <metin> | --task <metin>) [--engine e] [--queue] [--no-catch-up]
+  routine list | off <id> | on <id>            zamanlanmış rutinler
+  secret set <AD> [--agent <id>]...            değeri stdin'den okur, DPAPI ile saklar
+  secret list | grant <AD> <ajan> | rm <AD>    sır kasası (değer gösterilmez)
+  merge <görev-id> [--check <komut>]... [--ff-only]
+                                               görev dalını onayla birleştirir, kontrol düşerse geri alır
+  push <dal> [--remote origin]                 sır taraması + onayla iter
+  worktrees [--shelve]                         görev worktree'leri; --shelve dokunulmayanları rafa kaldırır
+  verify                                       olay zincirini doğrular
+  status                                       durum, son olaylar, bütçe ve tahmin
   bins                                         bulunan motorlar
   bench                                        1000 görevle hız ölçümü`;
 
@@ -80,7 +93,7 @@ function parseParallel(s) {
  *   knowledge: verilmezse Noesis kuruluysa ona bağlanılır (FA_NOESIS=0 kapatır).
  * @returns {Promise<number>} çıkış kodu
  */
-export async function main(argv, { dbPath, stdout = process.stdout, cwd = process.cwd(), adapters, llm, knowledge: knowledgeIn } = {}) {
+export async function main(argv, { dbPath, stdout = process.stdout, cwd = process.cwd(), adapters, llm, knowledge: knowledgeIn, readStdin = readAllStdin, vault: vaultIn } = {}) {
   const say = (s = '') => stdout.write(`${s}\n`);
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === 'help' || cmd === '--help') { say(USAGE); return 0; }
@@ -90,12 +103,13 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     return 0;
   }
   if (cmd === 'bench') return bench(say);
-  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
+  if (!['init', 'add', 'run', 'status', 'goal', 'goals', 'approve', 'comment', 'council', 'know', 'agents', 'routine', 'secret', 'merge', 'push', 'worktrees', 'verify'].includes(cmd)) { say(`bilinmeyen komut: ${cmd}\n${USAGE}`); return 2; }
 
   const path = dbPath ?? process.env.FA_DB ?? join(cwd, '.feyzullah-agents', 'fa.db');
   const db = openDb(path);
   let opened = null;
   const agentDirs = [BUNDLED_AGENTS, join(dirname(path), 'agents')];
+  const vault = vaultIn ?? createVault(db);
   const sync = () => { const list = loadAgents(agentDirs); syncAgents(db, list); return list; };
   const knowledgeOf = () => {
     if (knowledgeIn !== undefined) return knowledgeIn;
@@ -136,16 +150,100 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       const stop = () => ctrl.abort();
       process.once('SIGINT', stop);
       try {
-        const r = await drive({ db, adapters: ad, llm: llmFor(ad), cwd: root, signal: ctrl.signal, knowledge: knowledgeOf(), lessonParentId: process.env.FA_NOESIS_PARENT ?? null, ...extra });
+        const r = await drive({ db, adapters: ad, llm: llmFor(ad), cwd: root, signal: ctrl.signal, knowledge: knowledgeOf(), lessonParentId: process.env.FA_NOESIS_PARENT ?? null, vault, ...extra });
         say(`bitti ${r.done}, başarısız ${r.failed}, bekleyen ${r.blocked} (bütçe ${r.skippedBudget}), inceleme ${r.reviews}`);
         for (const g of r.goals) say(`hedef ${g.goalId.slice(0, 8)}: ${g.status}\n${g.report}${g.lesson?.created ? `\nNoesis'e not yazıldı: ${g.lesson.id}` : ''}`);
       } finally { process.off('SIGINT', stop); }
     };
     const llmFor = (ad) => llm ?? createLlm(ad, { cwd: root });
+    /** Zamanı gelen rutinler: görevler kuyruğa girer, hedefler planlanır. */
+    const fireRoutines = async (ad) => {
+      for (const f of tickRoutines(db)) {
+        if (f.skipped) { say(`rutin atlandı (${f.skipped}): ${f.routineId.slice(0, 8)}`); continue; }
+        say(`rutin çalıştı: ${f.kind} ${f.entityId.slice(0, 8)}`);
+        if (f.kind === 'goal') {
+          if (!activeAgents(db).length) sync();
+          await planGoal({ db, goalId: f.entityId, llm: llmFor(ad), agents: activeAgents(db) }).catch((err) => say(`rutin planlanamadı: ${err.message}`));
+        }
+      }
+    };
+    /** --worktree: her görev kendi dalında; başarılı adım commit'lenir (sır varsa commit durur). */
+    const worktreeOpts = () => ({
+      cwdFor: (t) => ensureWorktree(db, { repo: root, taskId: t.id }),
+      onSucceeded: (t, at) => commitStep(at, `fa: ${t.title}`),
+    });
     if (cmd === 'run') {
-      const { one, opt } = parseArgs(rest, new Set(['network']));
-      await driveAll(await getAdapters(), { maxParallel: parseParallel(one('parallel')), network: Boolean(opt.network) });
+      const { one, opt } = parseArgs(rest, new Set(['network', 'worktree']));
+      const ad = await getAdapters();
+      await fireRoutines(ad);
+      await driveAll(ad, { maxParallel: parseParallel(one('parallel')), network: Boolean(opt.network), ...(opt.worktree ? worktreeOpts() : {}) });
       return 0;
+    }
+    if (cmd === 'routine') {
+      const [sub, ...r2] = rest;
+      if (sub === 'add') {
+        const { pos, opt, one } = parseArgs(r2, new Set(['queue', 'no-catch-up']));
+        const name = pos.join(' ').trim();
+        const body = one('goal') ?? one('task');
+        if (!name || !body) throw new UsageError('ad ve --goal ya da --task gerekli');
+        const id = addRoutine(db, {
+          name, cron: one('cron'), kind: one('task') != null ? 'task' : 'goal', body, engine: one('engine') ?? one('when-free'),
+          concurrency: opt.queue ? 'queue' : 'skip', catchUp: opt['no-catch-up'] ? 'none' : 'latest', whenFree: one('when-free') != null,
+        });
+        const r = db.prepare('SELECT next_run_at FROM routines WHERE id = ?').get(id);
+        say(`${id} sonraki: ${new Date(r.next_run_at).toLocaleString('tr-TR')}`);
+        return 0;
+      }
+      if (sub === 'off' || sub === 'on') { setRoutineEnabled(db, r2[0] ?? '', sub === 'on'); say(`rutin ${sub === 'on' ? 'açıldı' : 'kapandı'}`); return 0; }
+      if (sub === 'tick') { await fireRoutines(await getAdapters()); return 0; }
+      for (const r of listRoutines(db)) {
+        say(`${r.id.slice(0, 8)} ${r.enabled ? 'açık ' : 'kapalı'} ${r.cron ?? `limit açılınca (${r.engine})`} ${r.kind} "${r.name}" sonraki ${r.next_run_at ? new Date(r.next_run_at).toLocaleString('tr-TR') : '-'}`);
+      }
+      return 0;
+    }
+    if (cmd === 'secret') {
+      const [sub, ...r2] = rest;
+      if (sub === 'set') {
+        const { pos, opt } = parseArgs(r2);
+        const value = (await readStdin()).replace(/\r?\n$/, '');
+        vault.set(pos[0] ?? '', value, { agents: opt.agent ?? [] });
+        say(`saklandı: ${pos[0]}`);
+        return 0;
+      }
+      if (sub === 'grant') { vault.grant(r2[0], r2[1]); say(`izin verildi: ${r2[0]} → ${r2[1]}`); return 0; }
+      if (sub === 'rm') { vault.remove(r2[0]); say(`silindi: ${r2[0]}`); return 0; }
+      for (const s of vault.list()) say(`${s.name.padEnd(24)} ${s.agents.join(', ') || '(kimseye açık değil)'}`);
+      return 0;
+    }
+    if (cmd === 'merge') {
+      const { pos, opt } = parseArgs(rest, new Set(['ff-only']));
+      const taskId = resolveTaskId(db, pos[0] ?? '');
+      const r = await mergeWorktree(db, { taskId, checks: opt.check ?? [], ffOnly: Boolean(opt['ff-only']) });
+      if (r.merged) say('birleşti');
+      else if (r.approvalId) say(`onay bekliyor: fa approve ${r.approvalId}`);
+      else say(`birleşmedi: ${r.reverted ? 'kontrol düştü, geri alındı' : r.error}`);
+      return r.merged || r.approvalId ? 0 : 1;
+    }
+    if (cmd === 'push') {
+      const { pos, one } = parseArgs(rest);
+      if (!pos[0]) throw new UsageError('dal gerekli');
+      const r = pushBranch(db, { repo: root, branch: pos[0], remote: one('remote') ?? 'origin' });
+      if (r.pushed) say('gönderildi');
+      else if (r.secrets) say(`durduruldu, olası gizli bilgi: ${r.secrets.join(', ')}`);
+      else if (r.approvalId) say(`onay bekliyor: fa approve ${r.approvalId}`);
+      else say(`gönderilemedi: ${r.error}`);
+      return r.pushed || r.approvalId ? 0 : 1;
+    }
+    if (cmd === 'worktrees') {
+      const { opt } = parseArgs(rest, new Set(['shelve']));
+      if (opt.shelve) say(`rafa kalktı: ${shelveWorktrees(db).length}`);
+      for (const w of db.prepare('SELECT * FROM worktrees ORDER BY created_at').all()) say(`${w.task_id.slice(0, 8)} ${w.status.padEnd(8)} ${w.branch} ${w.path}`);
+      return 0;
+    }
+    if (cmd === 'verify') {
+      const v = verifyChain(db);
+      say(v.ok ? `olay zinciri sağlam (${v.checked} olay)` : `olay zinciri bozuk: #${v.brokenAt}`);
+      return v.ok ? 0 : 1;
     }
     if (cmd === 'goal') {
       const { pos, opt, one } = parseArgs(rest, new Set(['approval', 'goldfish', 'plan-only']));
@@ -182,6 +280,8 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
       if (!a) throw new UsageError(`onay bulunamadı: ${pos[0] ?? ''}`);
       if (a.action === 'plan.approve') approvePlan(db, a.entity_id, { approve: !opt.reject });
       else decideApproval(db, a.id, { approve: !opt.reject, by: 'kullanıcı' });
+      // Kurtarma kartı onaylanınca takılan görev yeniden kuyruğa girer.
+      if (a.action === 'task.recover' && !opt.reject && getTask(db, a.entity_id)?.status === 'blocked') blockTask(db, a.entity_id, { retryAt: Date.now(), reason: 'kurtarma onaylandı' });
       say(`${opt.reject ? 'reddedildi' : 'onaylandı'}: ${a.action}`);
       return 0;
     }
@@ -226,6 +326,9 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     for (const r of db.prepare('SELECT status, count(*) n FROM tasks GROUP BY status ORDER BY status').all()) say(`${r.status.padEnd(12)} ${r.n}`);
     const b = budgetStatus(db);
     say(`bütçe: ${b.state}${b.limit ? ` ${b.used}/${b.limit} token` : ` (sınır yok, bugün ${b.used} token)`}, bilinmeyen kullanım: ${b.unknownRuns}`);
+    for (const f of budgetForecast(db)) {
+      if (f.perHour) say(`  ${f.budgetId}: saatte ${f.perHour} token${f.exhaustAt ? `, bu hızla ${new Date(f.exhaustAt).toLocaleTimeString('tr-TR')} dolar` : ', pencere içinde dolmaz'}`);
+    }
     const last = db.prepare('SELECT max(seq) m FROM events').get().m ?? 0;
     for (const e of since(db, Math.max(0, last - 10), 10)) say(`  ${new Date(e.at).toLocaleTimeString('tr-TR')} ${e.type} ${e.entityId?.slice(0, 8) ?? ''}`);
     return 0;
@@ -236,6 +339,13 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
     if (opened) opened.close();
     db.close();
   }
+}
+
+/** Standart girdinin tamamı (sır değeri komut satırında görünmesin diye). */
+async function readAllStdin() {
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /** 1000 görev (her biri bir öncekine yarı olasılıkla bağlı) + readyTasks süresi. */

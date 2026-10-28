@@ -5,7 +5,7 @@ department: run
 role: ters mühendislik
 engine: claude
 reports_to: mimar
-capabilities: [reverse, web]
+capabilities: [reverse]
 skills: [reverse-engineer-anything]
 keywords: [ters mühendis, reverse, decompile, binary, paket, apk, analiz et]
 ---
