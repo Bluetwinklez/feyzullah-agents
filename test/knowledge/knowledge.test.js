@@ -47,6 +47,8 @@ test('zararsız metin değişmez, noreply e-posta ve rastgele sayılar geçer', 
   const s = 'Commit 144558175+Bluetwinklez@users.noreply.github.com, 1000 görev 115 ms, sürüm 2.1.309, epoch 1761700000123';
   assert.deepEqual(scanSecrets(s), []);
   assert.equal(redactText(s).text, s);
+  assert.deepEqual(scanSecrets('test kimliği fa-test@example.invalid, dev@app.test'), [], 'ayrılmış test alan adları');
+  assert.equal(scanSecrets(['ali', 'sirket.com.tr'].join('@')).length, 1);
 });
 
 test('olay günlüğü metin içindeki sırları da maskeler', () => {

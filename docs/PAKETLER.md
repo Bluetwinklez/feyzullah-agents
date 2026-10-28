@@ -25,6 +25,7 @@ Ayrıntılar ve rol tablosu: [ROBLOX.md](ROBLOX.md). Pakette 9 `rb-*` uzman var.
 | 2 | `rojo build ... -o build/game.rbxl` | `default.project.json` varsa |
 | 3 | `luau-analyze` | araç PATH'te varsa |
 | 4 | `node tests/run-*.mjs` | `tests/` altında varsa |
+| 5 | performans kapısı (`perf.luau`) | `lune` ve `default.project.json` varsa |
 
 Windows'ta Rokit kökü bulunursa komutlar `set "ROKIT_ROOT=..."&&` ile başlar.
 
@@ -45,7 +46,7 @@ Güvenlik:
 - İçe aktarma **hiçbir adımı çalıştırmaz**. Bitmiş satırlar `done`, kalanlar `backlog` olur. Durdurulmuş bir proje kendiliğinden ilerlemez.
 - `fa roblox autopilot on` açılmadıkça adımlar yalnız `fa roblox next` ile tek tek açılır. Autopilot kapalı gelir.
 - Open Cloud anahtarları yalnız sır kasasında (`fa secret set`) durur ve ortam değişkeni olarak verilir. Yayınlama her seferinde onay ister.
-- Performans kapısı (`perf.maxParts`, `perf.maxLoadSeconds`) manifestte tanımlı, ancak Lune ölçüm betiği henüz yok (ertelendi).
+- Performans kapısı (katman 5): `lune` varsa `rojo build` ile geçici klasöre yer dosyası üretilir, `perf.luau` Part ve instance sayar. Part sayısı `perf.maxParts` eşiğini aşarsa kontrol düşer. Sınır: yalnız Rojo ağacındaki nesneler sayılır. Çalışma anında kodla üretilen harita ve Studio'da elle kurulan yer sayılmaz (sokak-oyunu ölçümü: 48 instance, 0 Part). Yükleme süresi (`perf.maxLoadSeconds`) Studio gerektirdiği için kendiliğinden ölçülmez.
 
 ## Genel akış (paketsiz)
 
@@ -63,7 +64,25 @@ fa status
 - `fa import <dosya>`: kimlikleri korur, var olan kayıtları ezmez. İkinci aktarım bir şey eklemez.
 - `fa hire`: son işlere bakıp eksik departman/motor ya da zorlanan uzman için öneri verir. `fa hire --write <id>` önerilen uzman dosyasını yazar.
 
-## Ertelenenler
+## Santral paneli
 
-- Kurulum betikleri ve `FA_PORT` (#53), ccusage çapraz kontrolü (#58), güvenlik kapısı (#73, şimdilik `merge --check`), Roblox performans kapısı (#75), PoC bulguları (#80).
-- Ayrı iş kuyruğu (görevler + rutinler bu işi görüyor) ve Santral'da Roblox paneli.
+Çalışma alanı türünün paketi panel sunuyorsa (Roblox sunar) Santral'ın sağ sütununda "Üretim sırası" bloğu çıkar: her hedefin adımları, "Sıradakini aç" düğmesi (önceki adım bitmeden kapalı) ve autopilot anahtarı. Autopilot açıksa Santral geçen adımdan sonra sıradakini kendisi açar.
+
+## Güvenlik kapısı
+
+`fa merge` birleştirmeden önce dalın getirdiği değişikliği tarar (dış araç gerekmez):
+
+- **Engel:** eklenen satırlarda gizli bilgi; riskli dosya adları (`.env`, `*.pem`, `*.key`, `id_rsa`, `credentials.json`, `.npmrc`...). `.env.example` serbest.
+- **Uyarı:** `eval`/`new Function`, şablon dizgili `exec`, Luau `loadstring`, `HttpService` istekleri, kapalı TLS doğrulaması, `--dangerously-skip-permissions`.
+- `--audit`: `npm audit` da çalışır (bağımlılık listesini npm kayıt sunucusuna gönderir, bu yüzden isteğe bağlı).
+- Elle tarama: `fa security [<görev>] [--base <ref>]`.
+
+## Kurulum ve ayarlar
+
+- `tools/kur.ps1` (Windows) ve `tools/kur.sh`: Node 24+, git, motorlar ve Roblox araçlarını denetler, hiçbir şey kurmaz. `-Link` / `--link` ile `fa` komutunu `npm link` ile ekler.
+- `FA_PORT`: `fa serve` için varsayılan port (`--port` önceliklidir).
+- `fa usage [--ccusage <dosya|->]`: günlük Claude kullanımı ve ccusage karşılaştırması. Ayrıntı: [DENEME.md](DENEME.md).
+
+## Kapsam dışı
+
+- Ayrı iş kuyruğu: görevler ve rutinler bu işi görüyor.
