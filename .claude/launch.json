@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/tasarim-sunucu.mjs", "4173"],
       "port": 4173
+    },
+    {
+      "name": "santral-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/santral-demo.mjs", "4318"],
+      "port": 4318
     }
   ]
 }
