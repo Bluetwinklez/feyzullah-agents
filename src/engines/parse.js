@@ -25,7 +25,6 @@ export function parseLine(engine, line) {
     if (j.type === 'thread.started') return { sessionId: j.thread_id };
     if (j.type === 'item.completed' && j.item?.type === 'agent_message') return { text: j.item.text, final: j.item.text };
     if (j.type === 'turn.failed') return { error: j.error?.message ?? 'Codex turu başarısız' };
-    if (j.type === 'error') return { error: j.message ?? 'Codex hatası' };
     if (j.type === 'turn.completed' && j.usage) {
       // Codex'te cached_input_tokens, input_tokens'ın içindedir.
       const cached = j.usage.cached_input_tokens ?? 0;

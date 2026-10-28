@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -56,7 +57,7 @@ test('açılışta takılı run kurtarılır', async (t) => {
   const s = setup(t);
   const db = openDb(join(s.dir, 'fa.db'));
   const task = createTask(db, { title: 'a' });
-  claimTask(db, task.id, { engine: 'codex' });
+  claimTask(db, task.id, { engine: 'codex', ownerPid: spawnSync(process.execPath, ['-e', '']).pid });
   db.close();
   assert.equal(await s.run(['status']), 0);
   assert.match(s.out(), /kurtarıldı: 1/);

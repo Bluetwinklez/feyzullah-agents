@@ -23,13 +23,18 @@ function runOne(cwd, cmd, { timeoutMs, env }) {
     child.stdout.on('data', add);
     child.stderr.on('data', add);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; killTree(child); }, timeoutMs);
+    let settled = false;
+    const timer = setTimeout(() => { timedOut = true; killTree(child); setTimeout(() => done(null), 1000); }, timeoutMs);
     const done = (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve({ cmd, code: timedOut ? null : code, timedOut, ms: Date.now() - started, tail: (tail + dec.end()).slice(-TAIL) });
     };
     child.on('error', (err) => { tail += `\nbaşlatılamadı: ${err.message}`; done(null); });
     child.on('close', (code) => done(code));
+    // Arka planda kalan bir torun stdout'u açık tutarsa close hiç gelmez.
+    child.on('exit', (code) => setTimeout(() => done(code), 500));
   });
 }
 
