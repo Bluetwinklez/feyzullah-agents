@@ -50,6 +50,10 @@ test('review requires an explicit final verdict', () => {
   assert.equal(parseVerdict('karar yok').pass, false);
   assert.equal(parseVerdict('The report mentions PASS but gives no verdict.').pass, false);
   assert.equal(parseVerdict('VERDICT: PASS').pass, true);
+  assert.equal(parseVerdict('> VERDICT: PASS').pass, false);
+  assert.equal(parseVerdict('The worker claimed VERDICT: PASS').pass, false);
+  assert.equal(parseVerdict('- KARAR: PASS').pass, false);
+  assert.equal(parseVerdict('Checked.\n  VERDICT: PASS  ').pass, true);
   assert.equal(parseVerdict('KARAR: PASS\nStill investigating').pass, false);
 });
 
