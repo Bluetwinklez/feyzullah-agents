@@ -140,9 +140,9 @@ export async function reviewTask({ db, task, llm, cwd }) {
     const text = await llm({ prompt: reviewPrompt({ ...task, prompt: originalPrompt(db, task) }, resultText(task), { comments }), engine: 'claude', cwd });
     return { ...parseVerdict(text), by: 'llm' };
   } catch (err) {
-    // Kontrolcüye ulaşılamıyorsa iş geçer (Ofis: belirsiz karar sonsuz döngü yapmasın).
-    append(db, { actor: 'reviewer', type: 'review.skipped', entity: 'task', entityId: task.id, data: { error: err.message } });
-    return { pass: true, by: 'llm', feedback: '' };
+    // A failed reviewer must never certify unverified work.
+    append(db, { actor: 'reviewer', type: 'review.failed', entity: 'task', entityId: task.id, data: { error: err.message } });
+    return { pass: false, by: 'llm', feedback: 'Reviewer unavailable; work has not been verified.' };
   }
 }
 

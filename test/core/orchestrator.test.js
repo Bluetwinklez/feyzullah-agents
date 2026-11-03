@@ -44,10 +44,13 @@ test('parsePlan: son json bloğu, bilinmeyen bağımlılık ve boş liste redded
   assert.match(parsePlan(json({ tasks: [{ key: 'a', prompt: 'x', after: ['z'] }] })).error, /bilinmeyen bağımlılık/);
 });
 
-test('parseVerdict belirsizse geçer, son karar sayılır', () => {
+test('review requires an explicit final verdict', () => {
   assert.equal(parseVerdict('iyi\nKARAR: PASS').pass, true);
   assert.equal(parseVerdict('önce PASS dedim ama\nKARAR: NEEDS WORK').pass, false);
-  assert.equal(parseVerdict('karar yok').pass, true);
+  assert.equal(parseVerdict('karar yok').pass, false);
+  assert.equal(parseVerdict('The report mentions PASS but gives no verdict.').pass, false);
+  assert.equal(parseVerdict('VERDICT: PASS').pass, true);
+  assert.equal(parseVerdict('KARAR: PASS\nStill investigating').pass, false);
 });
 
 test('plan görevleri bağımlılıklarıyla kurar ve hedef aktif olur', async () => {
@@ -138,11 +141,11 @@ test('iki turdan sonra başka motorla düzeltici, sonra döngü kapanır', async
   const antigravity = fake();
   await drive({ db, adapters: { codex, antigravity }, llm, cwd: '.' });
   const [t] = goalTasks(db, goal.id);
-  assert.equal(t.status, 'done');
+  assert.equal(t.status, 'failed');
   assert.equal(codex.calls.length, 3);
   assert.equal(antigravity.calls.length, 1);
   assert.match(antigravity.calls[0].prompt, /iki kez düzeltme/);
-  assert.equal(getGoal(db, goal.id).status, 'done');
+  assert.equal(getGoal(db, goal.id).status, 'failed');
   db.close();
 });
 
@@ -166,10 +169,11 @@ test('makine kontrolü kalırsa düzeltme turu çıktıyla açılır', async () 
   db.close();
 });
 
-test('kontrolcüye ulaşılamazsa iş geçer', async () => {
+test('reviewer failure cannot approve a task', async () => {
   const db = openDb();
   const v = await reviewTask({ db, task: { id: 't', title: 'x', checks: null, result: null }, llm: async () => { throw new Error('limit'); }, cwd: '.' });
-  assert.equal(v.pass, true);
+  assert.equal(v.pass, false);
+  assert.match(v.feedback, /unavailable/i);
   db.close();
 });
 

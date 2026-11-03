@@ -166,9 +166,11 @@ export function reopenTask(db, taskId, { prompt, engine = undefined, reason = nu
  */
 export function closeReview(db, taskId, { verdict, feedback = null }) {
   tx(db, () => {
-    const r = db.prepare(`UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ? AND status = 'in_review'`).run(now(), taskId);
+    if (!['pass', 'needs_work'].includes(verdict)) throw new Error('Invalid review verdict');
+    const status = verdict === 'pass' ? 'done' : 'failed';
+    const r = db.prepare(`UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = 'in_review'`).run(status, now(), taskId);
     if (r.changes !== 1) throw new Error(`incelemede değil: ${taskId}`);
-    append(db, { actor: 'reviewer', type: 'task.done', entity: 'task', entityId: taskId, data: { verdict, feedback: feedback?.slice(0, 2000) ?? null } });
+    append(db, { actor: 'reviewer', type: verdict === 'pass' ? 'task.done' : 'task.failed', entity: 'task', entityId: taskId, data: { verdict, feedback: feedback?.slice(0, 2000) ?? null } });
   });
 }
 
