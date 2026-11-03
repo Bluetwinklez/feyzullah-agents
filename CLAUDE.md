@@ -1,25 +1,25 @@
-# feyzullah-agents: ajan talimatları
+# Agent instructions
 
-Bu repoda çalışan her ajan (Claude, Codex, agy) için kurallar. Codex ve agy aynı içeriği `AGENTS.md` dosyasından okur.
+This file and `CLAUDE.md` must stay synchronized.
 
-## Durum
-Aşama 1–7 kodlandı (bkz. `docs/PLAN.md` aşama tablosu). Plan: `docs/PLAN.md`. Veri kaynakları: `docs/KAYNAKLAR.md`. Kararlar: `docs/KARARLAR.md`.
-Yeni bir aşama ya da büyük özellik için önce plan onayı al.
+## Project state
 
-## Değişmez kurallar
-- API anahtarı, jeton, şifre ya da kişisel veri repoya, loglara ve Noesis'e yazılmaz. `~/.feyzullah/` altından hiçbir dosya kopyalanmaz.
-- `--dangerously-skip-permissions` kullanılmaz. İzinler hedefli verilir.
-- CAPTCHA ve bot kontrolü atlatılmaz. Noesis'te "önerilmez" diye işaretlenmiş araçlar kullanılmaz.
-- Push, silme, dış servise gönderme ve kredi harcama işleri kullanıcı onayı ister.
-- Çalışan Ofis'in (`Desktop\claude\feyzullah-ofis`) dosyaları düzenlenmez, yalnızca okunur.
+Stages 1–7 are implemented. Read `docs/PLAN.md`, `docs/KAYNAKLAR.md` and `docs/KARARLAR.md` for the historical plan, sources and decisions. Obtain a plan decision before introducing a new major feature; maintenance and security fixes follow the user's current authorization.
 
-## Kod düzeni (aşama 1'den itibaren)
-- Node 24, ESM, JavaScript + JSDoc. Testler `node --test`, `test/**/*.test.js`.
-- Yorumlar ve kullanıcıya dönük metinler Türkçe. Office'teki stil korunur.
-- Her aşama ayrı dalda ve ayrı PR'da. Testler geçmeden main'e alınmaz.
-- Commit kimliği: `Bluetwinklez <144558175+Bluetwinklez@users.noreply.github.com>`.
+## Development
 
-## İş bölümü
-- Claude: planlama, mimari, güvenlik, inceleme, son kontrol.
-- Codex: kod, test, build, Krea görselleri.
-- agy: belge ve araştırma (terminal komutu çalıştıramaz).
+- Use Node.js 24, ESM JavaScript and JSDoc. Run `npm test` before pushing.
+- Keep changes on a focused branch and explain validation in the pull request.
+- Write new documentation, comments and user-facing text in English. Preserve existing command identifiers and stored data compatibility.
+- Use the commit identity `Bluetwinklez <144558175+Bluetwinklez@users.noreply.github.com>`.
+- Keep `KARAR:` compatible in review parsing; English `VERDICT:` is supported too. Missing or failed reviews must not approve tasks.
+
+## Credentials and external actions
+
+Never copy runtime files from `~/.feyzullah/` into source control. Never commit keys, tokens, passwords, cookies or personal records, or forward them to logs or Noesis. Do not use permission-bypass flags or bypass CAPTCHA/bot checks. Do not modify a separate running Office installation.
+
+Push, deletion, external transmission and spending require authorization in the current user task. Existing authorization persists; do not ask again for an action already authorized. Application approval cards do not provide an OS sandbox.
+
+## Responsibilities
+
+Claude handles planning, architecture and review. Codex handles implementation and tests. Antigravity handles supported documentation and research tasks. Keep claims about mocked services separate from live verification.
