@@ -106,10 +106,11 @@ test('findBins .cmd döndürmez', async () => {
   try {
     writeFileSync(join(dir, 'codex.cmd'), '@echo off');
     writeFileSync(join(dir, 'agy.cmd'), '@echo off');
-    writeFileSync(join(dir, 'agy.exe'), '');
+    const executable = process.platform === 'win32' ? 'agy.exe' : 'agy';
+    writeFileSync(join(dir, executable), '');
     const bins = await findBins({ PATH: dir, LOCALAPPDATA: join(dir, 'yok'), APPDATA: join(dir, 'yok') });
     assert.equal(bins.codex ?? null, null);
-    assert.equal(bins.antigravity, join(dir, 'agy.exe'));
+    assert.equal(bins.antigravity, join(dir, executable));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

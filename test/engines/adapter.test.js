@@ -15,7 +15,17 @@ function tmp(t) {
   return dir;
 }
 
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    // A container's PID 1 may not reap killed children immediately. Zombies cannot run.
+    if (process.platform === 'linux') {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z')) return false;
+    }
+    return true;
+  } catch { return false; }
+};
 
 test('adaptör stdin ile prompt verir', async (t) => {
   const cwd = tmp(t);

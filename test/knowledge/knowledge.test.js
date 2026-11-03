@@ -27,7 +27,7 @@ test('gizli bilgi taraması anahtar, jeton ve kişisel veriyi yakalar', () => {
   const s = [
     'anthropic sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123',
     'gh: ghp_abcdefghijklmnopqrstuvwxyz0123456789',
-    'aws AKIAABCDEFGHIJKLMNOP',
+    'aws AKIAABCDEFGHIJKLMNOP', // gitleaks:allow -- synthetic AWS-shaped fixture
     'api_key = "s3cr3tdeger1234"',
     'mail ali.veli@gmail.com',
     'tel +90 532 123 45 67',
@@ -94,7 +94,7 @@ test('önbellek süresi dolunca yeniden sorulur', async (t) => {
 
 test('ders sayfası gizli bilgiden arındırılır, aynı başlık ikinci kez açılmaz', async (t) => {
   const { kn, calls, db } = setup(t);
-  const a = await kn.writeLesson({ title: 'Yeni araç X', markdown: '## Özet\nanahtar: api_key=abcdef123456789 ile kurulur', parentId: 'kok' });
+  const a = await kn.writeLesson({ title: 'Yeni araç X', markdown: '## Özet\nanahtar: api_key=abcdef123456789 ile kurulur', parentId: 'kok' }); // gitleaks:allow -- synthetic redaction fixture
   assert.equal(a.created, true);
   assert.deepEqual(a.redacted, ['parola/anahtar ataması']);
   const create = calls().find((c) => c.name === 'create_page');
