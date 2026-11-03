@@ -78,7 +78,7 @@ export function parseVerdict(text) {
   const t = String(text ?? '').trim();
   // Only the final explicit verdict can approve work. Quoted output is not a verdict.
   const lastLine = t.split(/\r?\n/).at(-1) ?? '';
-  const m = lastLine.match(/(?:^|\s)(?:KARAR|VERDICT|STATUS)\s*:\s*(PASS|NEEDS[ _-]?WORK)\s*$/i);
+  const m = lastLine.match(/^\s*(?:KARAR|VERDICT|STATUS)\s*:\s*(PASS|NEEDS[ _-]?WORK)\s*$/i);
   const pass = Boolean(m && /^PASS$/i.test(m[1]));
   const feedback = m ? t.slice(0, t.length - m[0].length).trim() : 'Review did not provide an explicit final verdict.';
   return { pass, feedback: feedback.slice(0, 4000) };
