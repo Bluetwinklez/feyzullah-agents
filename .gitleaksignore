@@ -1,3 +1,3 @@
 # Reviewed false positives only. See SECURITY_AUDIT.md for classification.
-8f7062dc0490ba4770b2138eee11c51d08632aa2:test/knowledge/knowledge.test.js:aws-access-token:30
-8f7062dc0490ba4770b2138eee11c51d08632aa2:test/knowledge/knowledge.test.js:generic-api-key:97
+67ae68c0164762f7ad0dd96da91611fa54d361c3:test/knowledge/knowledge.test.js:aws-access-token:30
+67ae68c0164762f7ad0dd96da91611fa54d361c3:test/knowledge/knowledge.test.js:generic-api-key:97
