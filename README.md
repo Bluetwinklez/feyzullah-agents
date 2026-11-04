@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo/santral.svg" width="96" alt="Santral"></p>
+
 # feyzullah-agents
 
 Genel amaçlı, çok ajanlı (multi-agent) yapay zekâ çalışma ortamı. Kod, araştırma, tasarım, oyun, içerik, veri ve ters mühendislik işlerini bir ajan ekibine dağıtır. [feyzullah-office](https://github.com/Bluetwinklez/feyzullah-office) temel alınarak geliştirilir.

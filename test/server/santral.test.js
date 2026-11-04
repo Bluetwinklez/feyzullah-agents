@@ -40,6 +40,14 @@ test('arayüz 60 KB altında, harici betik ve yazı tipi yok', () => {
   assert.ok(statSync(UI).size < 60 * 1024);
 });
 
+test('sayfa SVG favicon taşır ve CSP data: görsele izin verir', async (t) => {
+  const { base } = await setup(t);
+  const r = await fetch(base);
+  const html = await r.text();
+  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,/);
+  assert.match(r.headers.get('content-security-policy'), /img-src 'self' data:/);
+});
+
 test('jeton olmadan API kapalı, yanlış Host reddedilir', async (t) => {
   const { call, base, s } = await setup(t);
   assert.equal((await call('/api/state', { token: null })).status, 401);

@@ -54,7 +54,7 @@ const USAGE = `Kullanım: fa <komut>
   usage [--ccusage <dosya|->]                  günlük Claude kullanımı; ccusage daily --json ile karşılaştırır
   security [<görev>] [--base <ref>] [--audit]  güvenlik taraması (gizli bilgi, riskli dosya, kod kalıpları)
   packages                                     yüklü alan paketleri
-  roblox import [--file docs/uretim-sirasi.md] | next [<hedef>] | layers | autopilot on|off
+  roblox import [--file docs/uretim-sirasi.md] | backlog [--decisions] | next [<hedef>] | layers | autopilot on|off
                                                Roblox paketi (adımlar elle açılır; autopilot kapalı gelir)
   export [--out <dosya>] | import <dosya>      çalışma alanını JSON olarak taşır (sırlar ve günlük hariç)
   hire [--write <id>]                          işe alma önerileri; --write uzman dosyasını yazar
@@ -345,13 +345,24 @@ export async function main(argv, { dbPath, stdout = process.stdout, cwd = proces
         say(o ? `açıldı: ${o.title} (çalıştırmak için: fa run)` : 'açılacak adım yok');
         return 0;
       }
+      if (sub === 'backlog') {
+        const { opt } = parseArgs(r2, new Set(['decisions']));
+        if (opt.decisions) {
+          for (const k of mod.KARARLAR) say(`- ${k.konu}: ${k.secenekler} (${k.ne_zaman})`);
+          return 0;
+        }
+        if (!activeAgents(db).length) sync();
+        for (const g of mod.importBacklog(db, { root })) say(`${g.goalId.slice(0, 8)} ${g.title}: ${g.skipped ? 'zaten var, atlandı' : `${g.tasks} iş, hepsi bekliyor`}`);
+        say('Hiçbir iş kendiliğinden çalışmaz. Sıradakini açmak için: fa roblox next <hedef>. Senin vermen gereken kararlar: fa roblox backlog --decisions');
+        return 0;
+      }
       if (sub === 'autopilot') {
         if (r2[0] !== 'on' && r2[0] !== 'off') { say(`autopilot: ${mod.autopilot(db) ? 'açık' : 'kapalı'}`); return 0; }
         mod.autopilot(db, r2[0] === 'on');
         say(`autopilot ${r2[0] === 'on' ? 'açık: geçen adımdan sonra sıradaki kendiliğinden açılır' : 'kapalı'}`);
         return 0;
       }
-      throw new UsageError('roblox import | next | layers | autopilot');
+      throw new UsageError('roblox import | backlog | next | layers | autopilot');
     }
     if (cmd === 'export') {
       const { one } = parseArgs(rest);

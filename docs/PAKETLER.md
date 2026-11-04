@@ -64,6 +64,22 @@ fa status
 - `fa import <dosya>`: kimlikleri korur, var olan kayıtları ezmez. İkinci aktarım bir şey eklemez.
 - `fa hire`: son işlere bakıp eksik departman/motor ya da zorlanan uzman için öneri verir. `fa hire --write <id>` önerilen uzman dosyasını yazar.
 
+## Kalan işler (backlog)
+
+`fa roblox backlog`, `roblox-sokak-oyunu` için kalan işleri açar (kaynak: `packages/roblox/kalan.js`). Sekiz hedef, 45 iş; hepsi `backlog`, hiçbiri kendiliğinden çalışmaz. Aynı komutu tekrar çalıştırmak çoğaltmaz.
+
+| Hedef | İş | İçerik |
+|---|---|---|
+| 8. adım Araç: kontrol-8 düzeltmeleri | 10 | Engelleyici E1 (süreye bağlı adım sınırı) ve E2 (yatay/düşey hız), E3–E7 belge ve bayrak düzeltmeleri, üretim sırası tablosunu gerçek duruma getirme, yeniden kontrol |
+| 9–14. adımlar (Çatışma, Soygun, Ekip ve işletme, Öğretici ve ayarlar, Kozmetik ve ödeme, Yayın desteği) | 5'er | Tasarım belgesi → sunucu kodu → başsız testler → Studio listesi → bağımsız kontrol |
+| Asset ve harita hazırlığı | 5 | Asset kaydı denetimi, harita planı, performans bütçesi, 5. aşama Studio planı, kontrol |
+
+- Her iş bir `rb-*` uzmanına atanır ve kabul ölçütüyle gelir. Kod işleri katman 1–4 kontrolleriyle koşar.
+- Sıra bağımlılıkla zorlanır: 9. adımın tasarımı, 8. adımın yeniden kontrolü bitmeden açılamaz; her adım bir öncekinin bağımsız kontrolünden sonra başlar. `fa roblox next <hedef>` her seferinde tek iş açar.
+- Her işin istemine proje kuralları eklenir: sunucu otoritesi, yer tutucu değerlerin "kullanıcı kararı bekliyor" notu, Studio/DataStore/yayın işlerinin "kullanıcıya bırakıldı" kaydı, kapsam dışı içerik yok.
+- Yayın ve ödeme işleri gerçek anahtar, Open Cloud çağrısı ya da yayın komutu yazmaz; ödeme kodu sahte MarketplaceService ile test edilir.
+- `fa roblox backlog --decisions` yapay zekânın veremeyeceği 12 kararı ve yapamayacağı işleri listeler (derecelendirme, StreamingEnabled, asset sahipliği, ortamlar, denge değerleri, Studio doğrulamaları, yayın onayı...).
+
 ## Santral paneli
 
 Çalışma alanı türünün paketi panel sunuyorsa (Roblox sunar) Santral'ın sağ sütununda "Üretim sırası" bloğu çıkar: her hedefin adımları, "Sıradakini aç" düğmesi (önceki adım bitmeden kapalı) ve autopilot anahtarı. Autopilot açıksa Santral geçen adımdan sonra sıradakini kendisi açar.
