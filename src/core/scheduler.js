@@ -87,7 +87,7 @@ export async function runReady({ db, adapters, maxParallel = DEFAULT_PARALLEL, c
     const timer = setInterval(() => {
       if (Date.now() - lastOut > wd.silentMs) { silenced = true; ctrl.abort(); }
     }, wd.checkMs);
-    timer.unref?.();
+    // Kept referenced: a silent run that holds no other handle must not let the process exit before the watchdog fires.
     const input = {
       prompt: task.prompt ?? task.title, persona: personaFor(agent), cwd: at, model: agent && agent.engine === engine ? agent.model ?? null : null,
       allowedTools: toolsFor({ engine, capabilities: agent?.capabilities }), network: network && engine === 'codex', signal: ctrl.signal, onEvent, env,
