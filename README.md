@@ -2,6 +2,8 @@
 
 # Feyzullah Agents
 
+[![Core tests](https://github.com/Bluetwinklez/feyzullah-agents/actions/workflows/test.yml/badge.svg)](https://github.com/Bluetwinklez/feyzullah-agents/actions/workflows/test.yml) [![Secret scanning](https://github.com/Bluetwinklez/feyzullah-agents/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/Bluetwinklez/feyzullah-agents/actions/workflows/secret-scan.yml)
+
 **Plan • Execute • Verify — local multi-agent workflows**
 
 A Node.js workspace for coordinating coding, research and creative tasks through externally installed AI coding tools. Inspired by [Feyzullah Office](https://github.com/Bluetwinklez/feyzullah-office), with optional knowledge integration from [Noesis](https://github.com/Bluetwinklez/noesis).
